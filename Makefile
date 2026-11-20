@@ -4,7 +4,7 @@ COMPOSE := docker compose --env-file .env -f docker/compose.yaml
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics produce test-unit offline
+.PHONY: help env up down ps logs topics produce test-unit offline live evaluate
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -45,3 +45,11 @@ SEED ?= 7
 offline: ## Replay a producer file dump through the detector with pandas (SEED=7); tuning only
 	$(SPARK) bash -c 'python -m producer.run --sink file --speed 0 --seed $(SEED) --run-id dev-seed$(SEED) >/dev/null && \
 	  python -m streaming.offline --events /data/runs/dev-seed$(SEED)/events.jsonl --sweep-cusum 8,10,12,14,16 --out docs/results/offline_dev_seed$(SEED).json'
+
+LIVE_ARGS ?= --cells 240 --hours 6 --speed 30 --seed 2026
+
+live: ## End-to-end live run on a fresh topic (RUN=live), held-out seed 2026, 6 simulated hours at 30x
+	APP_ARGS="--trigger-bronze 5 --trigger-silver 2 --trigger-detect 2" scripts/live_run.sh $(RUN) rt cell.kpi $(LIVE_ARGS)
+
+evaluate: ## Reconcile, score and time a finished live run into docs/results/live_$(RUN).json
+	$(SPARK) spark-submit --master 'local[4]' streaming/evaluate.py --run-id $(RUN) --ns rt --out docs/results/live_$(RUN).json

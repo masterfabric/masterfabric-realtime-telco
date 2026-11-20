@@ -4,7 +4,7 @@ COMPOSE := docker compose --env-file .env -f docker/compose.yaml
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics
+.PHONY: help env up down ps logs topics produce test-unit
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -28,3 +28,14 @@ logs: ## Tail service logs
 
 topics: ## Describe the Kafka topics
 	docker exec mf-rt-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
+
+CELLS ?= 240
+HOURS ?= 6
+SPEED ?= 120
+RUN   ?= live
+
+produce: ## Stream synthetic KPI reports into Kafka (CELLS=240 HOURS=6 SPEED=120 RUN=live)
+	$(SPARK) python -m producer.run --cells $(CELLS) --hours $(HOURS) --speed $(SPEED) --run-id $(RUN)
+
+test-unit: ## Producer and detector unit tests (inside the Spark container)
+	$(SPARK) python -m pytest -q -p no:cacheprovider tests/unit

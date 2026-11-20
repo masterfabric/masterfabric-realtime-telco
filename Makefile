@@ -4,7 +4,7 @@ COMPOSE := docker compose --env-file .env -f docker/compose.yaml
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics produce test-unit offline live evaluate
+.PHONY: help env up down ps logs topics produce test-unit offline live evaluate maintain
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -53,3 +53,6 @@ live: ## End-to-end live run on a fresh topic (RUN=live), held-out seed 2026, 6 
 
 evaluate: ## Reconcile, score and time a finished live run into docs/results/live_$(RUN).json
 	$(SPARK) spark-submit --master 'local[4]' streaming/evaluate.py --run-id $(RUN) --ns rt --out docs/results/live_$(RUN).json
+
+maintain: ## Compact streaming small files and expire snapshots, with before/after numbers
+	$(SPARK) spark-submit --master 'local[4]' streaming/maintenance.py --ns rt --out docs/results/maintenance_$(RUN).json

@@ -31,6 +31,7 @@ PRB_CONGESTION = 95.0
 Z_INTERFERENCE = -4.0
 P0_FLOOR, P0_CAP = 0.002, 0.05   # bounds on the learned normal failure rate
 CUSUM_H = 14.0               # decision interval in nats; chosen on the dev seed, see docs/results
+CUSUM_CAP = 1.5              # x CUSUM_H: bounds how long a recovered cell stays "degraded"
 CLEAR_WINDOWS = 3            # consecutive healthy windows that close an alert
 SEVERITY = {"outage": "critical", "sleeping_cell": "critical", "congestion": "major",
             "interference": "major", "degradation": "minor"}
@@ -127,7 +128,9 @@ def step(state: CellState, w: dict) -> list[dict]:
         if z["sinr"] <= Z_INTERFERENCE:
             hits["interference"] = -z["sinr"]
         if f["attempts"] > 0:
-            state.cusum = max(0.0, state.cusum + bernoulli_llr(state, f))
+            # Capped: an uncapped CUSUM climbs to hundreds during a long degradation and then needs
+            # hours of normal windows to drain, keeping the alert open long after recovery.
+            state.cusum = min(CUSUM_CAP * CUSUM_H, max(0.0, state.cusum + bernoulli_llr(state, f)))
         if state.cusum >= CUSUM_H and "interference" not in hits:
             hits["degradation"] = state.cusum
 

@@ -103,3 +103,15 @@ def test_scoring_counts_hits_misses_and_false_alerts():
     s = score(opens, truth, T0)
     assert (s["true_alerts"], s["false_alerts"], s["false_alerts_on_flash_crowds"]) == (1, 2, 1)
     assert s["recall"] == 0.5 and s["per_kind"]["outage"]["median_delay_min"] == 1.0
+
+
+def test_degradation_alert_closes_soon_after_recovery():
+    rng = np.random.default_rng(8)
+    ws = [window(i, rng) for i in range(60)]
+    ws += [window(60 + i, rng, p_fail=0.005 + 0.09 * i / 45) for i in range(45)]   # 45-minute degradation
+    ws += [window(105 + i, rng) for i in range(40)]                                 # repaired
+    _, ev = run(ws)
+    closed = [e for e in ev if e["status"] == "CLOSED"]
+    assert closed, "alert never closed"
+    minute = int((pd.Timestamp(closed[-1]["window_start"]) - pd.Timestamp(T0)).total_seconds() // 60)
+    assert minute < 105 + 15

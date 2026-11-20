@@ -11,6 +11,7 @@ from pathlib import Path
 
 from pyspark.sql import SparkSession
 
+from streaming import detector
 from streaming.scoring import score
 
 
@@ -57,6 +58,43 @@ def main() -> None:
     sim_start = datetime.fromisoformat(man["sim_start"])
     quality = score(opens, truth, sim_start, man["sim_minutes"])
 
+    # Same silver windows through the static-threshold rule set, for an apples-to-apples comparison.
+    w = spark.sql(f"SELECT * FROM {ns}.kpi_1m ORDER BY cell_id, window_start").toPandas()
+    static_opens, prev = [], {}
+    for r in w.to_dict("records"):
+        k = detector.static_rules(r)
+        if k and k != prev.get(r["cell_id"]):
+            static_opens.append({"cell_id": r["cell_id"], "alert_type": k, "window_start": r["window_start"]})
+        prev[r["cell_id"]] = k
+    import pandas as pd
+    static_quality = score(pd.DataFrame(static_opens), truth, sim_start, man["sim_minutes"])
+
+    # KPI traces around one incident of each kind (plus a flash crowd) for the README charts.
+    alerts_pd = spark.sql(f"SELECT cell_id, alert_type, status, window_start, detected_at FROM {ns}.alerts").toPandas()
+    picks, seen_kinds = [], set()
+    for i in truth["incidents"] + truth["benign"]:
+        if i["kind"] not in seen_kinds and i["start_min"] > 90 and i["end_min"] < man["sim_minutes"] - 30:
+            seen_kinds.add(i["kind"])
+            picks.append(i)
+    traces = []
+    for i in picks:
+        t = w[w.cell_id == i["cell_id"]].copy()
+        t["minute"] = (pd.to_datetime(t.window_start).dt.tz_localize(None) - pd.Timestamp(sim_start).tz_localize(None)).dt.total_seconds() / 60
+        t = t[(t.minute >= i["start_min"] - 45) & (t.minute <= i["end_min"] + 30)]
+        traces.append({"incident": i, "minute": t.minute.round(1).tolist(),
+                       **{c: t[c].round(4).tolist() for c in ("prb_avg", "latency_avg", "sinr_avg", "availability_min")},
+                       "rrc_sr": (t.rrc_success / t.rrc_attempts.clip(lower=1)).round(4).tolist(),
+                       "alerts": [{"type": r.alert_type, "status": r.status,
+                                   "minute": (pd.Timestamp(r.window_start).tz_localize(None) - pd.Timestamp(sim_start).tz_localize(None)).total_seconds() / 60}
+                                  for r in alerts_pd[alerts_pd.cell_id == i["cell_id"]].itertuples()]})
+    Path(a.out).with_name(Path(a.out).stem + "_traces.json").write_text(json.dumps(traces, default=float))
+
+    lat_raw = spark.sql(f"""SELECT (unix_millis(detected_at) - unix_millis(source_last_kafka_ts)) / 1000.0 AS s
+                            FROM {ns}.alerts WHERE status = 'OPEN'""").toPandas().s.round(3).tolist()
+    silver_raw = spark.sql(f"""SELECT (unix_millis(emitted_at) - unix_millis(last_kafka_ts)) / 1000.0 AS s
+                               FROM {ns}.kpi_1m""").toPandas().s.round(3).tolist()
+    Path(a.out).with_name(Path(a.out).stem + "_latency.json").write_text(json.dumps({"alert": lat_raw, "silver": silver_raw}, default=float))
+
     lat = {
         "kafka_to_bronze": latency(spark, f"{ns}.kpi_events", "ingested_at", "kafka_ts"),
         "last_report_to_silver_window": latency(spark, f"{ns}.kpi_1m", "emitted_at", "last_kafka_ts"),
@@ -89,10 +127,11 @@ def main() -> None:
     out = {"run_id": a.run_id, "ns": a.ns, "producer": {k: man[k] for k in (
                "cells", "sim_minutes", "speed", "seed", "wall_seconds", "events_per_wall_second", "incidents", "benign_events")},
            "app_wall_seconds": prog["wall_seconds"], "reconciliation": recon, "detection": quality,
+           "static_baseline_same_windows": static_quality,
            "alerts_by_type": alerts_by_type, "latency_seconds": lat, "queries": queries, "tables": tables,
            "cell_health": health}
-    Path(a.out).write_text(json.dumps(out, indent=2))
-    print(json.dumps(out, indent=1))
+    Path(a.out).write_text(json.dumps(out, indent=2, default=float))
+    print(json.dumps(out, indent=1, default=float))
     spark.stop()
 
 

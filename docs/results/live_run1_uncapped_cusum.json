@@ -1,0 +1,218 @@
+{
+  "run_id": "live",
+  "ns": "rt",
+  "producer": {
+    "cells": 240,
+    "sim_minutes": 360,
+    "speed": 30.0,
+    "seed": 2026,
+    "wall_seconds": 719.68,
+    "events_per_wall_second": 723.8,
+    "incidents": 36,
+    "benign_events": 2
+  },
+  "app_wall_seconds": 779.7,
+  "reconciliation": {
+    "producer_sent": 520931,
+    "producer_reports": 518400,
+    "bronze_rows": 520931,
+    "bronze_unique_events": 518400,
+    "bronze_parse_failures": 0,
+    "silver_windows": 85680,
+    "silver_reports": 513579,
+    "silver_cells": 240,
+    "duplicates_removed": 2531,
+    "not_in_silver": 4821,
+    "producer_very_late": 507
+  },
+  "detection": {
+    "alerts": 45,
+    "true_alerts": 43,
+    "false_alerts": 2,
+    "false_alerts_on_flash_crowds": 0,
+    "incidents": 36,
+    "incidents_detected": 36,
+    "precision": 0.9556,
+    "recall": 1.0,
+    "f1": 0.9773,
+    "type_accuracy": 1.0,
+    "median_delay_min": 3.0,
+    "p90_delay_min": 15.0,
+    "per_kind": {
+      "congestion": {
+        "incidents": 5,
+        "detected": 5,
+        "type_correct": 5,
+        "median_delay_min": 2.0,
+        "max_delay_min": 2.0
+      },
+      "degradation": {
+        "incidents": 14,
+        "detected": 14,
+        "type_correct": 14,
+        "median_delay_min": 12.5,
+        "max_delay_min": 24.0
+      },
+      "interference": {
+        "incidents": 7,
+        "detected": 7,
+        "type_correct": 7,
+        "median_delay_min": 3.0,
+        "max_delay_min": 5.0
+      },
+      "outage": {
+        "incidents": 6,
+        "detected": 6,
+        "type_correct": 6,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      },
+      "sleeping_cell": {
+        "incidents": 4,
+        "detected": 4,
+        "type_correct": 4,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      }
+    }
+  },
+  "static_baseline_same_windows": {
+    "alerts": 334,
+    "true_alerts": 81,
+    "false_alerts": 253,
+    "false_alerts_on_flash_crowds": 0,
+    "incidents": 36,
+    "incidents_detected": 35,
+    "precision": 0.2425,
+    "recall": 0.9722,
+    "f1": 0.3882,
+    "type_accuracy": 0.9143,
+    "median_delay_min": 4.0,
+    "p90_delay_min": 13.800000000000004,
+    "per_kind": {
+      "congestion": {
+        "incidents": 5,
+        "detected": 5,
+        "type_correct": 5,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      },
+      "degradation": {
+        "incidents": 14,
+        "detected": 14,
+        "type_correct": 14,
+        "median_delay_min": 11.5,
+        "max_delay_min": 18.0
+      },
+      "interference": {
+        "incidents": 7,
+        "detected": 6,
+        "type_correct": 3,
+        "median_delay_min": 4.0,
+        "max_delay_min": 11.0
+      },
+      "outage": {
+        "incidents": 6,
+        "detected": 6,
+        "type_correct": 6,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      },
+      "sleeping_cell": {
+        "incidents": 4,
+        "detected": 4,
+        "type_correct": 4,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      }
+    }
+  },
+  "alerts_by_type": {
+    "outage": 6,
+    "interference": 7,
+    "congestion": 5,
+    "degradation": 23,
+    "sleeping_cell": 4
+  },
+  "latency_seconds": {
+    "kafka_to_bronze": {
+      "p50_s": 2.489,
+      "p95_s": 4.82,
+      "p99_s": 4.826,
+      "max_s": 4.836,
+      "n": 520931.0
+    },
+    "last_report_to_silver_window": {
+      "p50_s": 8.153,
+      "p95_s": 8.161,
+      "p99_s": 8.165,
+      "max_s": 8.499,
+      "n": 85680.0
+    },
+    "last_report_to_alert": {
+      "p50_s": 10.214,
+      "p95_s": 10.236,
+      "p99_s": 10.242,
+      "max_s": 10.242,
+      "n": 45.0
+    }
+  },
+  "queries": {
+    "bronze": {
+      "batches": 147,
+      "batches_with_data": 145,
+      "rows": 520931,
+      "max_processed_rps": 7559.7,
+      "median_trigger_ms": 634,
+      "max_state_rows": 0,
+      "max_state_mem_mb": 0.0,
+      "dropped_by_watermark": 0
+    },
+    "silver": {
+      "batches": 364,
+      "batches_with_data": 361,
+      "rows": 520931,
+      "max_processed_rps": 1834.0,
+      "median_trigger_ms": 849,
+      "max_state_rows": 8160,
+      "max_state_mem_mb": 83.28,
+      "dropped_by_watermark": 502
+    },
+    "detect": {
+      "batches": 363,
+      "batches_with_data": 357,
+      "rows": 85680,
+      "max_processed_rps": 415.9,
+      "median_trigger_ms": 905,
+      "max_state_rows": 240,
+      "max_state_mem_mb": 45.92,
+      "dropped_by_watermark": 0
+    }
+  },
+  "tables": {
+    "kpi_events": {
+      "data_files": 168,
+      "bytes": 12983322,
+      "snapshots": 146
+    },
+    "kpi_1m": {
+      "data_files": 357,
+      "bytes": 5595135,
+      "snapshots": 363
+    },
+    "alerts": {
+      "data_files": 76,
+      "bytes": 416816,
+      "snapshots": 64
+    },
+    "cell_health": {
+      "data_files": 35,
+      "bytes": 85553,
+      "snapshots": 64
+    }
+  },
+  "cell_health": {
+    "ok": 25,
+    "degradation": 10
+  }
+}

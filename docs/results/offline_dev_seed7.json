@@ -1,0 +1,139 @@
+{
+  "run_id": "dev-seed7",
+  "seed": 7,
+  "windows": 86400,
+  "adaptive": {
+    "alerts": 43,
+    "true_alerts": 42,
+    "false_alerts": 1,
+    "false_alerts_on_flash_crowds": 0,
+    "incidents": 36,
+    "incidents_detected": 36,
+    "precision": 0.9767,
+    "recall": 1.0,
+    "f1": 0.9882,
+    "type_accuracy": 1.0,
+    "median_delay_min": 2.0,
+    "p90_delay_min": 8.0,
+    "per_kind": {
+      "congestion": {
+        "incidents": 8,
+        "detected": 8,
+        "type_correct": 8,
+        "median_delay_min": 2.0,
+        "max_delay_min": 2.0
+      },
+      "degradation": {
+        "incidents": 6,
+        "detected": 6,
+        "type_correct": 6,
+        "median_delay_min": 8.5,
+        "max_delay_min": 11.0
+      },
+      "interference": {
+        "incidents": 7,
+        "detected": 7,
+        "type_correct": 7,
+        "median_delay_min": 4.0,
+        "max_delay_min": 4.0
+      },
+      "outage": {
+        "incidents": 8,
+        "detected": 8,
+        "type_correct": 8,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      },
+      "sleeping_cell": {
+        "incidents": 7,
+        "detected": 7,
+        "type_correct": 7,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      }
+    }
+  },
+  "static": {
+    "alerts": 566,
+    "true_alerts": 51,
+    "false_alerts": 515,
+    "false_alerts_on_flash_crowds": 0,
+    "incidents": 36,
+    "incidents_detected": 35,
+    "precision": 0.0901,
+    "recall": 0.9722,
+    "f1": 0.1649,
+    "type_accuracy": 0.9429,
+    "median_delay_min": 1.0,
+    "p90_delay_min": 9.0,
+    "per_kind": {
+      "congestion": {
+        "incidents": 8,
+        "detected": 8,
+        "type_correct": 8,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      },
+      "degradation": {
+        "incidents": 6,
+        "detected": 6,
+        "type_correct": 6,
+        "median_delay_min": 9.0,
+        "max_delay_min": 10.0
+      },
+      "interference": {
+        "incidents": 7,
+        "detected": 6,
+        "type_correct": 4,
+        "median_delay_min": 6.0,
+        "max_delay_min": 9.0
+      },
+      "outage": {
+        "incidents": 8,
+        "detected": 8,
+        "type_correct": 8,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      },
+      "sleeping_cell": {
+        "incidents": 7,
+        "detected": 7,
+        "type_correct": 7,
+        "median_delay_min": 1.0,
+        "max_delay_min": 1.0
+      }
+    }
+  },
+  "cusum_sweep": [
+    {
+      "cusum_h": 8.0,
+      "false_alerts": 15,
+      "recall": 1.0,
+      "degradation_median_delay_min": 7.0
+    },
+    {
+      "cusum_h": 10.0,
+      "false_alerts": 7,
+      "recall": 1.0,
+      "degradation_median_delay_min": 8.0
+    },
+    {
+      "cusum_h": 12.0,
+      "false_alerts": 4,
+      "recall": 1.0,
+      "degradation_median_delay_min": 8.0
+    },
+    {
+      "cusum_h": 14.0,
+      "false_alerts": 1,
+      "recall": 1.0,
+      "degradation_median_delay_min": 8.5
+    },
+    {
+      "cusum_h": 16.0,
+      "false_alerts": 0,
+      "recall": 1.0,
+      "degradation_median_delay_min": 9.0
+    }
+  ]
+}

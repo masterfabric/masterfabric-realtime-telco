@@ -4,7 +4,7 @@ COMPOSE := docker compose --env-file .env -f docker/compose.yaml
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics produce test-unit
+.PHONY: help env up down ps logs topics produce test-unit offline
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -39,3 +39,9 @@ produce: ## Stream synthetic KPI reports into Kafka (CELLS=240 HOURS=6 SPEED=120
 
 test-unit: ## Producer and detector unit tests (inside the Spark container)
 	$(SPARK) python -m pytest -q -p no:cacheprovider tests/unit
+
+SEED ?= 7
+
+offline: ## Replay a producer file dump through the detector with pandas (SEED=7); tuning only
+	$(SPARK) bash -c 'python -m producer.run --sink file --speed 0 --seed $(SEED) --run-id dev-seed$(SEED) >/dev/null && \
+	  python -m streaming.offline --events /data/runs/dev-seed$(SEED)/events.jsonl --sweep-cusum 8,10,12,14,16 --out docs/results/offline_dev_seed$(SEED).json'

@@ -127,7 +127,9 @@ services:
       - checkpoints:/checkpoints
     command: ["notebook"]
     ports:
-      - "127.0.0.1:${PORT_SPARK_UI}:4040"
+      # The image's entrypoint starts a Spark Thrift server that takes 4040, so the streaming
+      # application's UI (Structured Streaming tab) binds to 4041.
+      - "127.0.0.1:${PORT_SPARK_UI}:4041"
       - "127.0.0.1:${PORT_SPARK_HISTORY}:18080"
 
 volumes:

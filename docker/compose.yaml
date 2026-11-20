@@ -1,0 +1,138 @@
+# MasterFabric Realtime Telco: Kafka -> Spark Structured Streaming -> Iceberg on S3-compatible storage.
+# Every port is bound to 127.0.0.1; Kafka listeners are PLAINTEXT. A laptop lab, not a hardened cluster.
+name: mf-realtime
+
+x-s3-env: &s3-env
+  AWS_ACCESS_KEY_ID: ${LAKE_S3_ACCESS_KEY}
+  AWS_SECRET_ACCESS_KEY: ${LAKE_S3_SECRET_KEY}
+  AWS_REGION: ${LAKE_S3_REGION}
+  AWS_DEFAULT_REGION: ${LAKE_S3_REGION}
+
+services:
+  # Single-node Kafka in KRaft mode (no ZooKeeper). Two listeners: one for containers,
+  # one advertised on the host loopback for tools running on the laptop.
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: mf-rt-kafka
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,HOST://127.0.0.1:${PORT_KAFKA}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_HEAP_OPTS: -Xmx1G -Xms1G
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports:
+      - "127.0.0.1:${PORT_KAFKA}:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 >/dev/null 2>&1"]
+      interval: 5s
+      retries: 30
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    container_name: mf-rt-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init/create-topics.sh"]
+    volumes:
+      - ./kafka:/init:ro
+
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: mf-rt-kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: mf-realtime
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${PORT_KAFKA_UI}:8080"
+
+  # S3-compatible object storage for Iceberg data and Spark checkpoints (see docs/adr).
+  s3:
+    image: rustfs/rustfs:1.0.6
+    container_name: mf-rt-s3
+    environment:
+      RUSTFS_ACCESS_KEY: ${LAKE_S3_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${LAKE_S3_SECRET_KEY}
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    volumes:
+      - s3-data:/data
+    ports:
+      - "127.0.0.1:${PORT_S3_API}:9000"
+      - "127.0.0.1:${PORT_S3_CONSOLE}:9001"
+
+  s3-init:
+    image: amazon/aws-cli:latest
+    container_name: mf-rt-s3-init
+    depends_on:
+      - s3
+    environment: *s3-env
+    entrypoint: ["/bin/sh", "/init/create-buckets.sh"]
+    volumes:
+      - ./s3:/init:ro
+
+  catalog:
+    image: apache/iceberg-rest-fixture:1.8.1
+    container_name: mf-rt-catalog
+    depends_on:
+      s3-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *s3-env
+      CATALOG_URI: jdbc:sqlite:file:/var/lib/iceberg/catalog.db
+      CATALOG_WAREHOUSE: ${LAKE_WAREHOUSE}
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://s3:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+    user: root
+    volumes:
+      - catalog-data:/var/lib/iceberg
+    ports:
+      - "127.0.0.1:${PORT_CATALOG}:8181"
+
+  # Spark 3.5 driver (local mode) for the streaming application, the producer and the tests.
+  spark:
+    build: ./spark
+    image: mf-realtime/spark:3.5.5-iceberg1.8.1-kafka
+    container_name: mf-rt-spark
+    hostname: spark-rt
+    depends_on:
+      - catalog
+      - kafka-init
+    environment:
+      <<: *s3-env
+      SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY}
+      KAFKA_BOOTSTRAP: kafka:9092
+      PYTHONPATH: /lab:/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
+    volumes:
+      - ..:/lab
+      - ../data:/data
+      - spark-events:/home/iceberg/spark-events
+      - checkpoints:/checkpoints
+    command: ["notebook"]
+    ports:
+      - "127.0.0.1:${PORT_SPARK_UI}:4040"
+      - "127.0.0.1:${PORT_SPARK_HISTORY}:18080"
+
+volumes:
+  kafka-data:
+  s3-data:
+  catalog-data:
+  spark-events:
+  checkpoints:

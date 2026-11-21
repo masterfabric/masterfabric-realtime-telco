@@ -1,0 +1,5 @@
+playwright==1.65.2
+pillow
+matplotlib
+numpy
+pandas

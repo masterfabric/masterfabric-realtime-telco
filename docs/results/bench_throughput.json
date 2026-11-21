@@ -1,0 +1,57 @@
+{
+  "producer": {
+    "cells": 240,
+    "sim_minutes": 720,
+    "wall_seconds": 11.77,
+    "events_per_wall_second": 88539.8,
+    "delivery": {
+      "reports": 1036800,
+      "sent": 1042065,
+      "late": 30717,
+      "very_late": 1036,
+      "duplicates": 5265
+    }
+  },
+  "runs": [
+    {
+      "label": "bronze \u00b7 maxOffsetsPerTrigger 100k",
+      "queries": "bronze",
+      "events": 1042065,
+      "batches": 11,
+      "seconds": 8.3,
+      "rows_per_s": 125611.0,
+      "max_state_rows": 0,
+      "max_batch_ms": 2332
+    },
+    {
+      "label": "silver \u00b7 maxOffsetsPerTrigger 100k",
+      "queries": "silver",
+      "events": 1042065,
+      "batches": 11,
+      "seconds": 13.95,
+      "rows_per_s": 74689.0,
+      "max_state_rows": 122422,
+      "max_batch_ms": 2993
+    },
+    {
+      "label": "silver \u00b7 maxOffsetsPerTrigger 500k",
+      "queries": "silver",
+      "events": 1042065,
+      "batches": 3,
+      "seconds": 11.02,
+      "rows_per_s": 94561.0,
+      "max_state_rows": 586478,
+      "max_batch_ms": 4825
+    },
+    {
+      "label": "bronze + silver \u00b7 maxOffsetsPerTrigger 100k",
+      "queries": "bronze,silver",
+      "events": 1042065,
+      "batches": 22,
+      "seconds": 15.03,
+      "rows_per_s": 69314.0,
+      "max_state_rows": 122422,
+      "max_batch_ms": 3157
+    }
+  ]
+}

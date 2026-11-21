@@ -4,7 +4,7 @@ COMPOSE := docker compose --env-file .env -f docker/compose.yaml
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics produce test-unit offline live evaluate maintain
+.PHONY: help env up down ps logs topics produce test-unit offline live evaluate maintain bench screenshots assets tools
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -56,3 +56,15 @@ evaluate: ## Reconcile, score and time a finished live run into docs/results/liv
 
 maintain: ## Compact streaming small files and expire snapshots, with before/after numbers
 	$(SPARK) spark-submit --master 'local[4]' streaming/maintenance.py --ns rt --out docs/results/maintenance_$(RUN).json
+
+bench: ## Throughput benchmark: fill a topic at full speed, drain it with availableNow in 4 configs
+	scripts/bench.sh
+
+screenshots: ## Real UI screenshots (MODE=live while `make live` runs, MODE=after once it finished)
+	$(PY) scripts/screenshots.py $${MODE:-after}
+
+assets: ## Diagrams, charts and the hero image from docs/results
+	$(PY) scripts/make_diagrams.py && $(PY) scripts/make_charts.py $(RUN) && $(PY) scripts/make_hero.py
+
+tools: ## Host tools for screenshots and charts (uv venv)
+	uv venv -q -p 3.12 .venv && uv pip install -q -p .venv/bin/python -r requirements-tools.txt && .venv/bin/python -m playwright install chromium

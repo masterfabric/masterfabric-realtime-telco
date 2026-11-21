@@ -25,7 +25,8 @@ the why of each step (including the fixes found by running the system).
 
 ## Addition: schema registry, Flink vs Spark, exactly-once tests
 
-Added on 2026-11-21 in 19 commits (this file's update is the last). Apicurio Registry and Flink 2.2 joined
+Added on 2026-11-21 in 21 commits: the 18 below, this file's section (`6d7d8ba`), a chart label fix
+(`f8b8db6`) and this correction. Apicurio Registry and Flink 2.2 joined
 the Compose project behind two profiles; the producer gained an Avro mode; the same silver aggregation
 was written for Spark and for Flink SQL; a harness measured throughput, latency, window equality and
 duplicates after `kill -9`. Problems found on the way are in the commit messages and the README:

@@ -343,8 +343,11 @@ def spark_kill_loop(cmd_first: list[str], cmd_next: list[str], ckpt: str, kills:
     proc = subprocess.Popen(SPARK + cmd_first, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for i in range(kills):
         base = commits(ckpt)
-        while commits(ckpt) < base + rng.randint(3, 6):     # a few batches into this attempt
+        target = base + rng.randint(3, 6)                   # a few batches into this attempt
+        while commits(ckpt) < target and proc.poll() is None:
             time.sleep(0.3)
+        if proc.poll() is not None:
+            break
         time.sleep(rng.uniform(0, 1.5))                     # land anywhere inside a batch
         before = commits(ckpt)
         sh(SPARK + ["pkill", "-9", "-f", pattern], check=False)

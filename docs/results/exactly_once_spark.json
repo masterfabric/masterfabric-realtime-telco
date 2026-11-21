@@ -1,0 +1,52 @@
+{
+  "iceberg_sink": {
+    "records_in_topic": 521044,
+    "produced": 521044,
+    "kills": [
+      {
+        "kill": 1,
+        "commits_before_kill": 4,
+        "restart_to_next_commit_s": 4.6
+      },
+      {
+        "kill": 2,
+        "commits_before_kill": 13,
+        "restart_to_next_commit_s": 4.6
+      },
+      {
+        "kill": 3,
+        "commits_before_kill": 23,
+        "restart_to_next_commit_s": 0.0
+      }
+    ],
+    "rows": 521044,
+    "distinct_offsets": 521044,
+    "unparsed": 0,
+    "offset_gaps": 0,
+    "snapshots": 53,
+    "exactly_once": true
+  },
+  "kafka_sink": {
+    "input_topic": "cell.kpi.avro (from the eo-flink stage)",
+    "kills": [
+      {
+        "kill": 1,
+        "commits_before_kill": 3,
+        "restart_to_next_commit_s": 4.4
+      },
+      {
+        "kill": 2,
+        "commits_before_kill": 11,
+        "restart_to_next_commit_s": 4.7
+      },
+      {
+        "kill": 3,
+        "commits_before_kill": 20,
+        "restart_to_next_commit_s": 4.7
+      }
+    ],
+    "rows": 56880,
+    "distinct_windows": 56880,
+    "duplicate_rows": 0
+  }
+}

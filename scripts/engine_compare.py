@@ -218,13 +218,21 @@ def stage_live(a: argparse.Namespace) -> None:
     time.sleep(35)                                         # let Spark plan and run its first empty batches
     st = Stats(["mf-rt-spark", "mf-rt-flink-tm"]); st.start()
     prod = produce("cmp-live", "cell.kpi.avro", a.hours, a.speed, a.hours * 30)
-    spark.wait()
     stats = st.summary()
+    spark.wait()
     time.sleep(20)
     for j in (alo, eo):
         flink_cancel(j["job_id"])
     sh(SPARK + ["touch", stop])
     tap.wait()
+    (OUT / "live_meta.json").write_text(json.dumps({"prod": prod, "stats": stats, "speed": a.speed,
+                                                     "hours": a.hours, "checkpoint": a.checkpoint}))
+    analyze_live()
+
+
+def analyze_live() -> None:
+    meta = json.loads((OUT / "live_meta.json").read_text())
+    prod, speed = meta["prod"], meta["speed"]
     tools("input-index", "cell.kpi.avro", "--out", "/lab/.out/cmp/live_idx.json")
     truth = json.loads((OUT / "live_idx.json").read_text())
     t = by_topic(read_tap(OUT / "live_tap.jsonl"))
@@ -237,16 +245,22 @@ def stage_live(a: argparse.Namespace) -> None:
             first.setdefault(key(r["v"]), r)
         outs[label] = {k: r["v"] for k, r in first.items()}
         d = [(r["recv"] - truth[k]["last_kts"]) / 1000 for k, r in first.items() if k in truth]
-        lat[label] = {"windows": len(first), "rows": len(rows), "p50_s": pct(d, 50), "p95_s": pct(d, 95),
-                      "p99_s": pct(d, 99), "max_s": pct(d, 100)}
-    floor = round(2 * 60 / a.speed, 2)
-    res = {"input": {"records": prod["delivery"]["sent"], "speed": a.speed, "sim_hours": a.hours,
-                     "events_per_s": prod["events_per_wall_second"]},
+        lat[label] = {"windows": len(first), "rows": len(rows), "min_s": pct(d, 0), "p50_s": pct(d, 50),
+                      "p95_s": pct(d, 95), "p99_s": pct(d, 99), "max_s": pct(d, 100),
+                      "windows_equal_to_on_time_model": sum(1 for k, v in outs[label].items()
+                                                            if v["reports"] == truth[k]["events_on_time"]),
+                      "reports_dropped_as_late": sum(truth[k]["events"] - v["reports"] for k, v in outs[label].items())}
+    floor = round(2 * 60 / speed, 2)
+    res = {"input": {"records": prod["delivery"]["sent"], "speed": speed, "sim_hours": meta["hours"],
+                     "events_per_s": prod["events_per_wall_second"], "late": prod["delivery"]["late"],
+                     "very_late": prod["delivery"]["very_late"], "duplicates": prod["delivery"]["duplicates"],
+                     "windows_closed_by_watermark": len(truth) - 720},
            "definition": "latency = wall time the output row became visible to a read_committed consumer minus "
-                         "the Kafka timestamp of the last input record of that (cell, minute) window; it includes "
-                         f"the 2-minute watermark, which at speed {a.speed} is {floor} s of wall time",
-           "watermark_floor_s": floor, "flink_checkpoint": a.checkpoint, "spark_trigger_s": 1,
-           "latency": lat, "stats_during_produce": stats,
+                         "the Kafka timestamp of the last on-time input record of that (cell, minute) window "
+                         "(on time = not behind a global 2-minute watermark when it arrived); it includes the "
+                         f"2-minute watermark, which at speed {speed:g} is {floor} s of wall time",
+           "watermark_floor_s": floor, "flink_checkpoint": meta["checkpoint"], "spark_trigger_s": 1,
+           "latency": lat, "stats_during_produce": meta["stats"],
            "spark_vs_flink_alo": compare_outputs(outs["spark"], outs["flink_at_least_once"]),
            "flink_alo_vs_eo": compare_outputs(outs["flink_at_least_once"], outs["flink_exactly_once"])}
     (RES / "engine_live.json").write_text(json.dumps(res, indent=2))
@@ -371,7 +385,7 @@ def stage_eo_spark(a: argparse.Namespace) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("stage", choices=["drain", "live", "eo-flink", "eo-spark"])
+    p.add_argument("stage", choices=["drain", "live", "live-analyze", "eo-flink", "eo-spark"])
     p.add_argument("--hours", type=float, default=None)
     p.add_argument("--speed", type=float, default=60)
     p.add_argument("--repeats", type=int, default=3)
@@ -381,9 +395,9 @@ def main() -> None:
     p.add_argument("--down-s", type=float, default=3)
     p.add_argument("--kills", type=int, default=3)
     a = p.parse_args()
-    defaults = {"drain": 12, "live": 2, "eo-flink": 4, "eo-spark": 6}
+    defaults = {"drain": 12, "live": 2, "live-analyze": 2, "eo-flink": 4, "eo-spark": 6}
     a.hours = a.hours or defaults[a.stage]
-    {"drain": stage_drain, "live": stage_live, "eo-flink": stage_eo_flink, "eo-spark": stage_eo_spark}[a.stage](a)
+    {"drain": stage_drain, "live": stage_live, "live-analyze": lambda _a: analyze_live(), "eo-flink": stage_eo_flink, "eo-spark": stage_eo_spark}[a.stage](a)
 
 
 if __name__ == "__main__":

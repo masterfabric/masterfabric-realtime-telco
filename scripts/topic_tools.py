@@ -12,6 +12,7 @@ import os
 import struct
 import sys
 import time
+from datetime import datetime, timezone
 
 from confluent_kafka import Consumer, TopicPartition
 from confluent_kafka.admin import AdminClient, NewTopic
@@ -89,7 +90,7 @@ def tap(topics: list[str], out: str, idle_s: float, isolation: str, max_s: float
     print(json.dumps({"tapped": n, "file": out}))
 
 
-def input_index(topic: str, out: str) -> None:
+def input_index(topic: str, out: str, watermark_s: float = 120) -> None:
     """Decode the Avro input topic: per (cell, window) the Kafka timestamp of its last record and the
     number of distinct event ids (ground truth for a window that ignores lateness)."""
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -100,7 +101,7 @@ def input_index(topic: str, out: str) -> None:
     c = Consumer({"bootstrap.servers": BOOT, "group.id": f"idx-{time.time_ns()}", "auto.offset.reset": "earliest",
                   "enable.auto.commit": False})
     c.assign([TopicPartition(topic, p, 0) for p in ends])
-    schemas, idx, n, done = {}, {}, 0, set()
+    schemas, recs, n, done = {}, [], 0, set()
     while len(done) < len(ends):
         for m in c.consume(10000, 1.0):
             if m.error():
@@ -109,20 +110,32 @@ def input_index(topic: str, out: str) -> None:
             if sid not in schemas:
                 schemas[sid] = fastavro.parse_schema(reg.schema_by_id(sid))
             _, r = decode(m.value(), schemas)
-            ws = r["event_ts"].replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-            k = f"{r['cell_id']}|{ws}"
-            ts = m.timestamp()[1]
-            e = idx.setdefault(k, [0, set()])
-            e[0] = max(e[0], ts)
-            e[1].add(r["event_id"])
+            et = r["event_ts"].timestamp()
+            recs.append((m.timestamp()[1], et, r["cell_id"], r["event_id"]))
             n += 1
             if m.offset() + 1 >= ends[m.partition()]:
                 done.add(m.partition())
         if all(v == 0 for v in ends.values()):
             break
     c.close()
+    # Replay in arrival order with a global 2-minute watermark: a record counts as on time when its
+    # window end is still above (max event time seen so far - 2 min). last_kts uses on-time records only,
+    # so a dropped very-late record cannot make a window look emitted before its input arrived.
+    recs.sort()
+    idx: dict[str, list] = {}
+    max_et = float("-inf")
+    for kts, et, cell, eid in recs:
+        max_et = max(max_et, et)
+        wstart = et - (et % 60)
+        k = f"{cell}|{datetime.fromtimestamp(wstart, timezone.utc):%Y-%m-%d %H:%M:%S}"
+        e = idx.setdefault(k, [0, set(), set()])
+        e[1].add(eid)
+        if wstart + 60 > max_et - watermark_s:
+            e[2].add(eid)
+            e[0] = max(e[0], kts)
     with open(out, "w") as f:
-        json.dump({k: {"last_kts": v[0], "events": len(v[1])} for k, v in idx.items()}, f)
+        json.dump({k: {"last_kts": v[0], "events": len(v[1]), "events_on_time": len(v[2])}
+                   for k, v in idx.items()}, f)
     print(json.dumps({"input_records": n, "windows": len(idx), "file": out}))
 
 

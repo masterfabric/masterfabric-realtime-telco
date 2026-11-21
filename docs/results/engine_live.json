@@ -1,0 +1,79 @@
+{
+  "input": {
+    "records": 173701,
+    "speed": 60.0,
+    "sim_hours": 2.0,
+    "events_per_s": 1449.4,
+    "late": 5159,
+    "very_late": 192,
+    "duplicates": 901,
+    "windows_closed_by_watermark": 28080
+  },
+  "definition": "latency = wall time the output row became visible to a read_committed consumer minus the Kafka timestamp of the last on-time input record of that (cell, minute) window (on time = not behind a global 2-minute watermark when it arrived); it includes the 2-minute watermark, which at speed 60 is 2.0 s of wall time",
+  "watermark_floor_s": 2.0,
+  "flink_checkpoint": "10 s",
+  "spark_trigger_s": 1,
+  "latency": {
+    "spark": {
+      "windows": 28080,
+      "rows": 28080,
+      "min_s": 3.1,
+      "p50_s": 4.059,
+      "p95_s": 4.352,
+      "p99_s": 4.466,
+      "max_s": 4.563,
+      "windows_equal_to_on_time_model": 28080,
+      "reports_dropped_as_late": 188
+    },
+    "flink_at_least_once": {
+      "windows": 28080,
+      "rows": 28080,
+      "min_s": 1.6,
+      "p50_s": 2.596,
+      "p95_s": 2.71,
+      "p99_s": 2.737,
+      "max_s": 2.882,
+      "windows_equal_to_on_time_model": 28080,
+      "reports_dropped_as_late": 188
+    },
+    "flink_exactly_once": {
+      "windows": 28080,
+      "rows": 28080,
+      "min_s": 1.892,
+      "p50_s": 7.721,
+      "p95_s": 11.748,
+      "p99_s": 11.879,
+      "max_s": 11.92,
+      "windows_equal_to_on_time_model": 28080,
+      "reports_dropped_as_late": 188
+    }
+  },
+  "stats_during_produce": {
+    "mf-rt-spark": {
+      "samples": 60,
+      "cpu_avg_pct": 83.3,
+      "cpu_max_pct": 167.8,
+      "mem_max_mib": 2798.6
+    },
+    "mf-rt-flink-tm": {
+      "samples": 60,
+      "cpu_avg_pct": 12.4,
+      "cpu_max_pct": 26.6,
+      "mem_max_mib": 1846.3
+    }
+  },
+  "spark_vs_flink_alo": {
+    "common_windows": 28080,
+    "identical": 28080,
+    "differ": 0,
+    "only_first": 0,
+    "only_second": 0
+  },
+  "flink_alo_vs_eo": {
+    "common_windows": 28080,
+    "identical": 28080,
+    "differ": 0,
+    "only_first": 0,
+    "only_second": 0
+  }
+}

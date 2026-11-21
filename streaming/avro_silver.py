@@ -117,14 +117,14 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
     t0 = time.time()
     q, ids = build(spark, a)
-    rows, last_change = 0, time.time()
+    last_batch, last_active = -1, time.time()
     while q.isActive:
         q.awaitTermination(2)
-        prog = q.recentProgress
-        n = sum(int(x.get("numInputRows", 0)) for x in prog) if prog else 0
-        if n != rows:
-            rows, last_change = n, time.time()
-        if not a.available_now and time.time() - last_change > a.idle_stop_s:
+        lp = q.lastProgress
+        # Idle progress events (no input) are re-emitted every 10 s, so only count batches with input.
+        if lp and lp["batchId"] != last_batch and int(lp.get("numInputRows", 0)) > 0:
+            last_batch, last_active = lp["batchId"], time.time()
+        if not a.available_now and time.time() - last_active > a.idle_stop_s:
             q.stop()
         if time.time() - t0 > a.timeout_s:
             q.stop()

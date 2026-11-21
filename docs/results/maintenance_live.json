@@ -1,0 +1,88 @@
+{
+  "ns": "rt",
+  "tables": {
+    "kpi_events": {
+      "before": {
+        "data_files": 6,
+        "bytes": 9593791,
+        "avg_file_kib": 1561.5,
+        "snapshots": 147,
+        "manifests": 1
+      },
+      "after": {
+        "data_files": 6,
+        "bytes": 9593791,
+        "avg_file_kib": 1561.5,
+        "snapshots": 1,
+        "manifests": 1
+      },
+      "rewritten_files": 0,
+      "added_files": 0,
+      "expired_data_files": 167,
+      "seconds": 2.1
+    },
+    "kpi_1m": {
+      "before": {
+        "data_files": 357,
+        "bytes": 5606106,
+        "avg_file_kib": 15.3,
+        "snapshots": 363,
+        "manifests": 357
+      },
+      "after": {
+        "data_files": 6,
+        "bytes": 2178661,
+        "avg_file_kib": 354.6,
+        "snapshots": 1,
+        "manifests": 1
+      },
+      "rewritten_files": 357,
+      "added_files": 6,
+      "expired_data_files": 357,
+      "seconds": 4.77
+    },
+    "alerts": {
+      "before": {
+        "data_files": 83,
+        "bytes": 455460,
+        "avg_file_kib": 5.4,
+        "snapshots": 68,
+        "manifests": 68
+      },
+      "after": {
+        "data_files": 5,
+        "bytes": 34268,
+        "avg_file_kib": 6.7,
+        "snapshots": 1,
+        "manifests": 1
+      },
+      "rewritten_files": 83,
+      "added_files": 5,
+      "expired_data_files": 83,
+      "seconds": 1.28
+    },
+    "cell_health": {
+      "before": {
+        "data_files": 32,
+        "bytes": 75366,
+        "avg_file_kib": 2.3,
+        "snapshots": 68,
+        "manifests": 32
+      },
+      "after": {
+        "data_files": 1,
+        "bytes": 3158,
+        "avg_file_kib": 3.1,
+        "snapshots": 1,
+        "manifests": 1
+      },
+      "rewritten_files": 32,
+      "added_files": 1,
+      "expired_data_files": 80,
+      "seconds": 0.95
+    }
+  },
+  "probe_query": "SELECT cell_id, avg(prb_avg) FROM lake.rt.kpi_1m GROUP BY cell_id",
+  "probe_ms_before": 736.9,
+  "probe_ms_after": 43.5
+}

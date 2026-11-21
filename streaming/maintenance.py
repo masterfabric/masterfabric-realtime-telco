@@ -50,8 +50,9 @@ def main() -> None:
         r = spark.sql(f"CALL lake.system.rewrite_data_files(table => '{a.ns}.{t}', "
                       f"options => map('min-input-files','2','target-file-size-bytes','134217728'))").collect()[0]
         spark.sql(f"CALL lake.system.rewrite_manifests('{a.ns}.{t}')").collect()
+        now = spark.sql("SELECT date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss.SSS')").collect()[0][0]
         e = spark.sql(f"CALL lake.system.expire_snapshots(table => '{a.ns}.{t}', "
-                      f"older_than => current_timestamp(), retain_last => 1)").collect()[0]
+                      f"older_than => TIMESTAMP '{now}', retain_last => 1)").collect()[0]
         out["tables"][t] = {"before": before, "after": stats(spark, name),
                             "rewritten_files": r["rewritten_data_files_count"], "added_files": r["added_data_files_count"],
                             "expired_data_files": e["deleted_data_files_count"],

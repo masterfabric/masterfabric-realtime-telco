@@ -69,8 +69,7 @@ def comparison() -> None:
     for off, q, alpha in ((-0.25, "p50_s", 1.0), (0, "p95_s", 0.7), (0.25, "p99_s", 0.45)):
         ax[1].bar([i + off for i in x], [L[k][q] for k, _, _ in labels], width=0.24,
                   color=[c for _, _, c in labels], alpha=alpha, label=q.replace("_s", ""))
-    ax[1].axhline(live["watermark_floor_s"], color=HEX["GREY"], ls="--", lw=1)
-    ax[1].text(-0.42, live["watermark_floor_s"] - 0.45, "2-min watermark = 2 s at 60x", ha="left", fontsize=9, color=HEX["GREY"])
+    ax[1].axhline(live["watermark_floor_s"], color=HEX["GREY"], ls="--", lw=1, label="2-min watermark = 2 s at 60x")
     ax[1].set_xticks(list(x), [lbl for _, lbl, _ in labels])
     ax[1].set_ylabel("seconds after the window's last on-time input")
     ax[1].set_title(f"Live latency, {live['input']['events_per_s']:,.0f} events/s (p50 · p95 · p99)")
@@ -115,3 +114,4 @@ if __name__ == "__main__":
     comparison()
     exactly_once()
     print("ok")
+

@@ -128,7 +128,7 @@ def run(args: argparse.Namespace) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sink = FileSink(out_dir / "events.jsonl") if args.sink == "file" else KafkaSink(args.bootstrap, args.topic)
-    encoders, schema_ids, sizes = setup_avro(args) if args.format == "avro" else (None, {}, {})
+    encoders, schema_ids, sizes = setup_avro(args) if getattr(args, "format", "json") == "avro" else (None, {}, {})
     interval = args.interval_s
     ticks = total_min * 60 // interval
     pending: list[tuple[float, int, str, bytes]] = []   # (emit_at_sim_s, seq, key, payload)
@@ -194,7 +194,7 @@ def run(args: argparse.Namespace) -> dict:
         "delivery": counters,
         "rates": {"late": args.late_rate, "very_late": args.very_late_rate, "duplicate": args.duplicate_rate},
         "producer_errors": getattr(sink, "errors", 0),
-        "format": args.format,
+        "format": getattr(args, "format", "json"),
         "schema_ids": schema_ids,
         "payload_bytes": sizes,
         "incidents": len(net.incidents),

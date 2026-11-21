@@ -13,3 +13,6 @@ deliberately differs and why.
 | [0005](0005-adaptive-detector.md) | Per-cell adaptive baselines and a Bernoulli CUSUM instead of a trained model |
 | [0006](0006-exactly-once-effects.md) | Exactly-once effects: checkpoints, idempotent MERGE, keyed at-least-once alerts |
 | [0007](0007-payload-contract.md) | JSON with an explicit schema contract; Avro/Protobuf + registry in production |
+| [0008](0008-avro-schema-registry.md) | An Avro topic with a schema registry (Apicurio, BACKWARD rule) next to the JSON contract |
+| [0009](0009-flink-vs-spark-measured.md) | Flink vs Spark Structured Streaming, measured on the same job |
+| [0010](0010-exactly-once-kill-tests.md) | Exactly-once claims are tested with kill -9, not asserted |

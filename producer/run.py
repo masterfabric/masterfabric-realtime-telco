@@ -13,6 +13,7 @@ detector can be scored afterwards.
 
     python -m producer.run --cells 240 --hours 6 --speed 120
     python -m producer.run --cells 240 --hours 2 --speed 0 --topic cell.kpi.bench   # max rate
+    python -m producer.run --format avro --topic cell.kpi.avro --v2-from-minute 180  # schema change mid-run
 """
 from __future__ import annotations
 
@@ -85,6 +86,37 @@ class KafkaSink:
         self.p.flush(60)
 
 
+def setup_avro(args: argparse.Namespace):
+    """Register v1 (and v2 when the run switches mid-way) and build one encoder per version."""
+    from producer.avro_codec import AvroEncoder, Registry, load_schema
+
+    reg = Registry(args.registry)
+    subject = f"{args.topic}-value"                       # TopicNameStrategy, the Confluent default
+    encoders, ids = {}, {}
+    for ver in (1, 2) if args.v2_from_minute is not None else (1,):
+        schema = load_schema(f"cell_kpi_v{ver}")
+        status, body = reg.register(subject, schema)
+        if status != 200:
+            raise SystemExit(f"schema v{ver} rejected by the registry: {status} {body}")
+        ids[f"v{ver}"] = body["id"]
+        encoders[ver] = AvroEncoder(schema, body["id"])
+    return encoders, ids, {"avro": 0, "json_equivalent": 0}
+
+
+def encode(rec: dict, minute: float, args: argparse.Namespace, encoders, sizes: dict) -> bytes:
+    if encoders is None:
+        return json.dumps(rec).encode()
+    if args.v2_from_minute is not None and minute >= args.v2_from_minute:
+        rec = dict(rec, v=2, energy_kwh=round(0.25 + 0.004 * rec["prb_util_pct"], 4))   # synthetic site energy
+        enc = encoders[2]
+    else:
+        enc = encoders[1]
+    out = enc.encode(rec)
+    sizes["avro"] += len(out)
+    sizes["json_equivalent"] += len(json.dumps(rec).encode())
+    return out
+
+
 def run(args: argparse.Namespace) -> dict:
     total_min = int(args.hours * 60)
     net = build_network(args.cells, total_min, args.warmup_min, args.seed,
@@ -96,6 +128,7 @@ def run(args: argparse.Namespace) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sink = FileSink(out_dir / "events.jsonl") if args.sink == "file" else KafkaSink(args.bootstrap, args.topic)
+    encoders, schema_ids, sizes = setup_avro(args) if args.format == "avro" else (None, {}, {})
     interval = args.interval_s
     ticks = total_min * 60 // interval
     pending: list[tuple[float, int, str, bytes]] = []   # (emit_at_sim_s, seq, key, payload)
@@ -138,7 +171,7 @@ def run(args: argparse.Namespace) -> dict:
             for c in range(copies):
                 emit_at = t_sim + lag + c * float(rng.uniform(1, 20))
                 seq += 1
-                heapq.heappush(pending, (emit_at, seq, cell.cell_id, json.dumps(rec).encode()))
+                heapq.heappush(pending, (emit_at, seq, cell.cell_id, encode(rec, minute, args, encoders, sizes)))
         emit_due(t_sim + interval)
         sink.poll()
     emit_due(float("inf"))
@@ -161,6 +194,9 @@ def run(args: argparse.Namespace) -> dict:
         "delivery": counters,
         "rates": {"late": args.late_rate, "very_late": args.very_late_rate, "duplicate": args.duplicate_rate},
         "producer_errors": getattr(sink, "errors", 0),
+        "format": args.format,
+        "schema_ids": schema_ids,
+        "payload_bytes": sizes,
         "incidents": len(net.incidents),
         "benign_events": len({b.incident_id for b in net.benign}),
     }
@@ -189,6 +225,10 @@ def main() -> None:
     p.add_argument("--sink", choices=["kafka", "file"], default="kafka")
     p.add_argument("--bootstrap", default=os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092"))
     p.add_argument("--topic", default="cell.kpi")
+    p.add_argument("--format", choices=["json", "avro"], default="json")
+    p.add_argument("--registry", default=os.environ.get("SCHEMA_REGISTRY_URL", "http://registry:8080/apis/ccompat/v7"))
+    p.add_argument("--v2-from-minute", type=float, default=None,
+                   help="avro only: switch to schema v2 (adds energy_kwh) from this simulated minute")
     p.add_argument("--out", default="/data/runs")
     p.add_argument("--run-id", default=None)
     m = run(p.parse_args())

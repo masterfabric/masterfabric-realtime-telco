@@ -21,13 +21,16 @@ All numbers below come from runs on an Apple M4 Pro (24 GB) with Docker through 
 | Data handling | 2,531 duplicates removed · 502 very late rows dropped by the watermark (kept in bronze) · 0 parse failures |
 | Throughput (drain) | bronze **125,611 events/s** · silver 74,689–94,561 events/s · Spark `local[4]`, 6 partitions |
 | Table maintenance | silver 357 → 6 files · per-cell aggregate **736.9 → 43.5 ms** |
+| Schema registry (Avro) | BACKWARD rule: v2 accepted, incompatible v3 **rejected with 409** · Avro 103 B vs JSON 367 B per record |
+| Flink 2.2 vs Spark 3.5, same job | drain 1.04M records **3.07 s vs 10.54 s** · live p50 **2.6 s vs 4.1 s** · CPU 12 % vs 83 % · windows **identical** |
+| Exactly-once under kill -9 | Flink exactly-once sink **0** duplicates vs **4,080** at-least-once · Spark → Iceberg 521,044/521,044 offsets, **0** duplicates |
 
 ---
 
 ## Contents
 
 [Why](#why-this-lab) · [Architecture](#architecture) · [The detector](#the-detector) ·
-[Results](#results) · [Screenshots](#what-it-looks-like) · [Quickstart](#quickstart) ·
+[Results](#results) · [Avro, Flink vs Spark, exactly-once](#schema-registry-flink-vs-spark-and-exactly-once) · [Screenshots](#what-it-looks-like) · [Quickstart](#quickstart) ·
 [Walkthrough](#walkthrough) · [Enterprise mapping](#enterprise-mapping) · [Decisions](#design-decisions) ·
 [Limitations](#limitations) · [Roadmap](#roadmap) · [Build timeline](docs/TIMELINE.md) · [License](#license)
 
@@ -83,7 +86,7 @@ sequenceDiagram
   K->>Si: dedupe on event_id, added to window 10:41
   Note over Si: window 10:41 stays open until<br/>watermark = max event time − 2 min passes 10:42
   Si->>De: window committed to rt.kpi_1m, read as an Iceberg stream
-  De->>De: EWMA z-scores, CUSUM, rules; per-cell state in RocksDB
+  De->>De: EWMA z-scores, CUSUM, rules · per-cell state in RocksDB
   De->>Out: OPEN interference (evidence JSON), MERGE + Kafka
 ```
 
@@ -235,6 +238,94 @@ A per-cell aggregate over silver went from **736.9 ms to 43.5 ms** (median of 5)
 <p align="center"><img src="docs/screenshots/s3_console_silver_partitions.png" alt="RustFS console with silver partitions" width="100%"></p>
 <p align="center"><sub><b>Figure 13.</b> The silver table in object storage: Iceberg hidden partitioning by <code>hours(window_start)</code>, one folder per simulated hour.</sub></p>
 
+## Schema registry, Flink vs Spark and exactly-once
+
+Three questions the first version answered only in ADRs: what a schema registry actually enforces,
+what Flink would buy over Spark on this exact job, and whether the exactly-once claims survive a
+`kill -9`. Everything runs in the same Compose project behind two profiles (`schema`, `flink`).
+
+<p align="center"><img src="docs/images/engines_flow.png" alt="Avro producer, Apicurio registry, one Kafka topic read by Spark and by Flink, outputs compared" width="100%"></p>
+<p align="center"><sub><b>Figure 14.</b> The Avro path: the producer registers its schema and writes the Confluent wire format; Spark and Flink run the same silver aggregation on that topic and their outputs are compared window by window.</sub></p>
+
+### Avro and the schema registry
+
+[Apicurio Registry 3.3](https://www.apicur.io/registry/) (Apache-2.0) serves the Confluent-compatible
+API, so the producer, Spark and Flink would work unchanged against Confluent Schema Registry or Karapace
+([ADR 0008](docs/adr/0008-avro-schema-registry.md)). Subject `cell.kpi.avro-value` has a BACKWARD rule.
+From [`schema_registry.json`](docs/results/schema_registry.json):
+
+| Step | Result |
+|---|---|
+| Register v1 (`schemas/cell_kpi_v1.avsc`, same fields as the JSON contract) | id assigned, 49.5 ms |
+| Check / register v2 (adds optional `energy_kwh`, default null) | compatible · registered |
+| Check / register v3 (adds required `vendor`, no default) | incompatible · **HTTP 409**, `vendor at /fields/18` |
+| Re-register v1 | same id returned |
+| v1 record read with the v2 reader schema | `energy_kwh = null` |
+| Size | 103 B Avro (5 B header) vs 367 B JSON per record · 120.5 MB vs 403.1 MB over 1,042,006 records, before Kafka compression |
+
+The producer switches from v1 to v2 in the middle of a run (`--v2-from-minute`); both engines read
+the mixed topic. Spark needs one `from_avro` per schema id; the first version used a union of one
+branch per id and read the Kafka source twice per batch, so the final version uses one `CASE`.
+
+<p align="center"><img src="docs/screenshots/registry_versions.png" alt="Apicurio UI with two versions of cell.kpi.avro-value" width="49%"> <img src="docs/screenshots/registry_rules_backward.png" alt="Apicurio UI with the Backward compatibility rule" width="49%"></p>
+<p align="center"><sub><b>Figure 15.</b> Apicurio UI: the subject holds v1 and v2 only (v3 was refused), and the artifact rule is Backward.</sub></p>
+
+<p align="center"><img src="docs/screenshots/kafka_ui_avro_messages.png" alt="Kafka UI showing decoded Avro messages from cell.kpi.avro" width="100%"></p>
+<p align="center"><sub><b>Figure 16.</b> kafbat UI decodes <code>cell.kpi.avro</code> through the registry: v2 records with <code>energy_kwh</code>, keyed by cell.</sub></p>
+
+### Flink vs Spark on the same job
+
+`streaming/avro_silver.py` (Spark 3.5.5, `local[6]`) and `flink/silver.sql` (Flink 2.2.1, parallelism
+6, one 3 GB TaskManager) both apply a 2-minute watermark, drop duplicate `event_id`s and write one row
+per cell and minute to Kafka ([ADR 0009](docs/adr/0009-flink-vs-spark-measured.md)). Sources:
+[`engine_drain.json`](docs/results/engine_drain.json), [`engine_live.json`](docs/results/engine_live.json).
+
+| | Spark | Flink |
+|---|---:|---:|
+| Drain 1,042,006 records (12 simulated hours), median of 3 | 10.54 s · 98,862 rec/s | **3.07 s · 339,416 rec/s** |
+| Same including JVM start / job submission | 12.33 s | 7.79 s |
+| Live, 173,701 records at 1,449 events/s: latency p50 · p95 · p99 | 4.06 · 4.35 · 4.47 s | **2.60 · 2.71 · 2.74 s** |
+| Flink with the exactly-once Kafka sink (checkpoint 10 s) | | 7.72 · 11.75 · 11.88 s |
+| Average CPU during the live feed | 83 % (Spark container) | 12 % (TaskManager, 2 jobs) |
+| Windows equal to the other engine | 28,080 / 28,080 live · 172,080 / 172,080 drain | |
+
+Latency is measured from the Kafka timestamp of a window's last on-time input to the moment a
+`read_committed` consumer saw the output row. The 2-minute watermark alone is 2 s of wall time at 60x;
+Flink adds 0.6 s to that, Spark about 2 s, consistent with one
+1-second trigger to advance the watermark and the next to emit. With the exactly-once sink, rows wait for the checkpoint that commits the transaction. Both
+engines dropped the same 188 very late reports and match a replay of the input with a global 2-minute
+watermark on every window.
+
+<p align="center"><img src="docs/images/engine_comparison.png" alt="Drain throughput, live latency percentiles and CPU for Spark and Flink" width="100%"></p>
+<p align="center"><sub><b>Figure 17.</b> Left: drain throughput. Middle: live latency percentiles; the dashed line is the watermark floor. Right: CPU and peak memory during the live feed.</sub></p>
+
+<p align="center"><img src="docs/screenshots/flink_job_graph.png" alt="Flink job graph: source, window dedupe, window aggregate, Kafka writer and committer" width="100%"></p>
+<p align="center"><sub><b>Figure 18.</b> Flink UI: the planner turned the SQL into source → window dedupe + local window aggregate → global window aggregate → Kafka writer and committer, parallelism 6.</sub></p>
+
+### Exactly-once under kill -9
+
+`make eo-flink` and `make eo-spark` kill processes with SIGKILL in the middle of a run and count what
+comes out ([ADR 0010](docs/adr/0010-exactly-once-kill-tests.md); [`exactly_once_flink.json`](docs/results/exactly_once_flink.json),
+[`exactly_once_spark.json`](docs/results/exactly_once_spark.json)).
+
+| Sink | Kills | Output | Duplicates |
+|---|---|---|---:|
+| Flink exactly-once, read with `read_committed` | 2 × TaskManager | 56,880 windows | **0** |
+| Same topic, read with `read_uncommitted` | | 58,320 rows | 1,440 |
+| Flink at-least-once | 2 × TaskManager | 60,960 rows | **4,080** |
+| Spark → Iceberg bronze | 3 × driver | 521,044 rows = 521,044 offsets, 0 gaps | **0** |
+| Spark → Kafka (at-least-once by design) | 3 × driver | 56,880 windows | 0 observed |
+
+Flink detected the lost TaskManager after 15.7 s with default heartbeat settings and had all tasks
+running again 18.8–18.9 s after the kill. A restarted Spark driver committed its next batch 4.4–4.7 s
+after launch.
+
+<p align="center"><img src="docs/images/exactly_once.png" alt="Duplicate rows after kill -9 for each sink" width="100%"></p>
+<p align="center"><sub><b>Figure 19.</b> Duplicate output rows after the kills. Exactly-once into Kafka holds only for <code>read_committed</code> readers; a default reader sees the aborted copies.</sub></p>
+
+<p align="center"><img src="docs/screenshots/flink_exceptions_after_kill.png" alt="Flink exceptions tab: TaskManager no longer reachable" width="49%"> <img src="docs/screenshots/flink_checkpoints.png" alt="Flink checkpoint history with one failed checkpoint during the kill" width="49%"></p>
+<p align="center"><sub><b>Figure 20.</b> The same recovery in the Flink UI: "TaskManager … is no longer reachable", and checkpoint 5 failed during the outage while the following ones complete again.</sub></p>
+
 ## Quickstart
 
 Requirements: Docker with Compose (Docker Desktop, Colima or OrbStack) and about 8 GB of memory for the
@@ -244,7 +335,7 @@ VM. For screenshots and charts you also need [uv](https://docs.astral.sh/uv/).
 git clone https://github.com/masterfabric/masterfabric-realtime-telco.git
 cd masterfabric-realtime-telco
 make up          # Kafka, Kafka UI, RustFS, Iceberg REST catalog, Spark (builds the Spark image once)
-make test-unit   # 20 producer/detector tests inside the Spark container
+make test-unit   # 25 producer/detector/Avro tests inside the Spark container
 make live        # fresh topic, streaming app, 6 simulated hours at 30x (about 13 minutes)
 make evaluate    # reconcile, score and time it into docs/results/live_live.json
 ```
@@ -257,7 +348,24 @@ make evaluate    # reconcile, score and time it into docs/results/live_live.json
 | RustFS console | http://127.0.0.1:29001/rustfs/console/ (credentials in your local `.env`) |
 | Kafka from the host | `127.0.0.1:29092` |
 
-`make down` stops everything and keeps the volumes.
+The Avro, Flink and exactly-once additions:
+
+```bash
+make flink-up        # + Apicurio registry and UI, Flink 2.2 JobManager and TaskManager
+make registry-demo   # v1, BACKWARD rule, v2 accepted, v3 rejected
+make compare-drain   # Spark vs Flink throughput, 3 runs each (about 2 minutes)
+make compare-live    # both engines on a live feed (about 4 minutes)
+make eo-flink        # TaskManager killed twice (about 6 minutes)
+make eo-spark        # Spark driver killed 3 times per sink (about 2 minutes)
+```
+
+| Service | URL |
+|---|---|
+| Schema registry (Confluent-compatible API) | http://127.0.0.1:28085/apis/ccompat/v7 |
+| Apicurio Registry UI | http://127.0.0.1:28086 |
+| Flink UI | http://127.0.0.1:28081 |
+
+`make down` stops everything, including both profiles, and keeps the volumes.
 
 ## Walkthrough
 
@@ -285,7 +393,7 @@ tests/unit/  producer and detector tests
 ## Enterprise mapping
 
 <p align="center"><img src="docs/images/cloudera_mapping.png" alt="Mapping to Cloudera CDP" width="100%"></p>
-<p align="center"><sub><b>Figure 14.</b> Each lab component and its counterpart in a Cloudera CDP streaming estate.</sub></p>
+<p align="center"><sub><b>Figure 21.</b> Each lab component and its counterpart in a Cloudera CDP streaming estate.</sub></p>
 
 The patterns carry over unchanged: keyed topics, event-time windows with a watermark, dedupe within the
 watermark, independent queries per sink, an Iceberg table as the hand-off between streaming stages,
@@ -304,6 +412,9 @@ on YARN or Kubernetes instead of `local[4]`.
 | [0005](docs/adr/0005-adaptive-detector.md) | Per-cell adaptive baselines and a Bernoulli CUSUM instead of a trained model |
 | [0006](docs/adr/0006-exactly-once-effects.md) | Exactly-once effects: checkpoints, idempotent MERGE, keyed at-least-once alerts |
 | [0007](docs/adr/0007-payload-contract.md) | JSON with an explicit schema contract; Avro/Protobuf + registry in production |
+| [0008](docs/adr/0008-avro-schema-registry.md) | An Avro topic with a schema registry (Apicurio, BACKWARD rule) next to the JSON contract |
+| [0009](docs/adr/0009-flink-vs-spark-measured.md) | Flink vs Spark Structured Streaming, measured on the same job |
+| [0010](docs/adr/0010-exactly-once-kill-tests.md) | Exactly-once claims are tested with kill -9, not asserted |
 
 ## Limitations
 
@@ -327,8 +438,24 @@ These are deliberate simplifications or measured weaknesses, listed so the numbe
   Checkpoints are on a Docker volume (79 MiB after the live run), and the catalog uses `ResolvingFileIO`
   so the Iceberg streaming source can keep its offsets there. Production needs RF 3, TLS/SASL and
   checkpoints on HDFS or S3.
-- **Spark, not Flink.** Micro-batches give second-level latency. That is fine for NOC alarms and wrong for
-  sub-second use cases ([ADR 0002](docs/adr/0002-spark-structured-streaming.md)).
+- **Spark, not Flink, for the main pipeline.** Micro-batches give second-level latency, fine for NOC
+  alarms ([ADR 0002](docs/adr/0002-spark-structured-streaming.md)). The measured comparison
+  ([ADR 0009](docs/adr/0009-flink-vs-spark-measured.md)) shows Flink faster and much cheaper in CPU on
+  the Kafka-to-Kafka silver step; the detector and Iceberg pipeline were not ported.
+- **The engine comparison is one laptop and one live run.** Both engines shared 6 vCPUs while live, the
+  Spark container also hosts an idle Thrift server, history server and Jupyter (0.3 % CPU, 768 MiB),
+  and nothing was tuned (trigger, state backends, Kafka sink settings). On a backlog neither engine
+  dropped late data, because the watermark only moves per micro-batch or every 200 ms; lateness is only
+  exercised in the live run. Spark's `availableNow` run leaves the last 3 open minutes (720 windows)
+  unflushed, a bounded Flink job closes them.
+- **Spark reads schema ids once.** Open-source Spark has no registry lookup; `avro_silver.py` reads the
+  subject's versions at start-up, and a version registered later is skipped until a restart.
+- **Spark's Kafka sink showed 0 duplicates in 3 kills, which proves nothing.** It is at-least-once by
+  design; the kills simply missed the short window between the sink flush and the commit log.
+- **The registry answers before it is ready.** After a restart Apicurio returned an empty subject list
+  for up to about 10 seconds while it replayed its Kafka journal. Clients should wait for `/health/ready`.
+- **Exactly-once into Kafka needs `read_committed` readers** and makes output wait for the checkpoint
+  (p50 7.7 s instead of 2.6 s with 10-second checkpoints).
 - **Object storage is RustFS, not MinIO.** The MinIO images could not be pulled from this machine
   (Docker Hub returned "access denied", quay.io 401). RustFS speaks the same S3 API.
 - **The tail of a run is not scored.** Windows in the last two simulated minutes never close once input
@@ -341,8 +468,8 @@ These are deliberate simplifications or measured weaknesses, listed so the numbe
 - Alert hysteresis and suppression of child alerts under a site-level parent (correlated failures).
 - A learned component next to the rules: an isolation forest on silver windows, trained and registered
   through the MLOps lab, judged with the same scorer.
-- Flink SQL implementation of the silver stage to compare latency and state size on the same feed.
-- Avro + schema registry, and a dead-letter topic for payloads that fail the contract.
+- A dead-letter topic for payloads that fail the Avro or JSON contract, and Protobuf next to Avro.
+- Port the detector to Flink (keyed process function) to compare state size and alert latency, not only the silver step.
 - Multi-broker Kafka with TLS in Compose, and the detector's state TTL for decommissioned cells.
 
 ## License

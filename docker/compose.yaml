@@ -167,7 +167,8 @@ services:
       - "127.0.0.1:${PORT_REGISTRY_UI}:8080"
 
   # --- profile "flink": a Flink 2.2 session cluster (one JobManager, one TaskManager) used for
-  # the engine comparison and the exactly-once kill test. Checkpoints go to a local volume.
+  # the engine comparison and the exactly-once kill test. 12 slots so two parallelism-6 jobs (at-least-once
+  # and exactly-once) can run side by side. Checkpoints go to a local volume.
   flink-jobmanager:
     build: ./flink
     image: mf-realtime/flink:2.2.1
@@ -178,10 +179,10 @@ services:
     environment:
       FLINK_PROPERTIES: &flink-props |
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 6
+        taskmanager.numberOfTaskSlots: 12
         parallelism.default: 6
         jobmanager.memory.process.size: 1024m
-        taskmanager.memory.process.size: 2048m
+        taskmanager.memory.process.size: 3072m
         execution.checkpointing.dir: file:///checkpoints/flink
         state.savepoints.dir: file:///checkpoints/flink-savepoints
         restart-strategy.type: fixed-delay

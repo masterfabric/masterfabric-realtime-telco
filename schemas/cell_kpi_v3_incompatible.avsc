@@ -35,14 +35,8 @@
     },
     {
       "name": "rat",
-      "type": {
-        "type": "enum",
-        "name": "Rat",
-        "symbols": [
-          "LTE",
-          "NR"
-        ]
-      }
+      "type": "string",
+      "doc": "LTE or NR (a plain string: Avro cannot resolve an enum writer to a string reader, which Flink derives from the table DDL)"
     },
     {
       "name": "interval_s",

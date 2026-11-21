@@ -1,0 +1,97 @@
+{
+  "type": "record",
+  "name": "CellKpi",
+  "namespace": "io.masterfabric.telco",
+  "doc": "One radio-cell KPI report (v2: adds optional energy_kwh).",
+  "fields": [
+    {
+      "name": "v",
+      "type": "int",
+      "doc": "payload contract version carried in the record"
+    },
+    {
+      "name": "event_id",
+      "type": "string"
+    },
+    {
+      "name": "event_ts",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "end of the reporting interval, UTC"
+    },
+    {
+      "name": "cell_id",
+      "type": "string"
+    },
+    {
+      "name": "site_id",
+      "type": "string"
+    },
+    {
+      "name": "city",
+      "type": "string"
+    },
+    {
+      "name": "rat",
+      "type": {
+        "type": "enum",
+        "name": "Rat",
+        "symbols": [
+          "LTE",
+          "NR"
+        ]
+      }
+    },
+    {
+      "name": "interval_s",
+      "type": "int"
+    },
+    {
+      "name": "active_users",
+      "type": "double"
+    },
+    {
+      "name": "prb_util_pct",
+      "type": "double"
+    },
+    {
+      "name": "dl_throughput_mbps",
+      "type": "double"
+    },
+    {
+      "name": "ul_sinr_db",
+      "type": "double"
+    },
+    {
+      "name": "latency_ms",
+      "type": "double"
+    },
+    {
+      "name": "rrc_attempts",
+      "type": "long"
+    },
+    {
+      "name": "rrc_success",
+      "type": "long"
+    },
+    {
+      "name": "erab_drops",
+      "type": "long"
+    },
+    {
+      "name": "availability_pct",
+      "type": "double"
+    },
+    {
+      "name": "energy_kwh",
+      "type": [
+        "null",
+        "double"
+      ],
+      "default": null,
+      "doc": "site energy drawn during the interval; added in v2, optional with a default so v1 data stays readable"
+    }
+  ]
+}

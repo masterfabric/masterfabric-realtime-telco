@@ -132,6 +132,80 @@ services:
       - "127.0.0.1:${PORT_SPARK_UI}:4041"
       - "127.0.0.1:${PORT_SPARK_HISTORY}:18080"
 
+  # --- profile "schema": Apicurio Registry 3 (Apache-2.0). Its Confluent-compatible API
+  # (/apis/ccompat/v7) is what the Avro producer, Spark and Flink use. Schemas are stored in a
+  # Kafka journal topic (kafkasql), so they survive a registry restart.
+  registry:
+    image: apicurio/apicurio-registry:3.3.5
+    container_name: mf-rt-registry
+    hostname: registry
+    profiles: ["schema", "flink"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      APICURIO_STORAGE_KIND: kafkasql
+      APICURIO_KAFKASQL_BOOTSTRAP_SERVERS: kafka:9092
+      APICURIO_KAFKASQL_TOPIC: _registry_journal
+      APICURIO_KAFKASQL_SNAPSHOTS_TOPIC: _registry_snapshots
+      APICURIO_HTTP_CORS_ORIGINS: http://127.0.0.1:${PORT_REGISTRY_UI},http://localhost:${PORT_REGISTRY_UI}
+      APICURIO_REST_DELETION_ARTIFACT_ENABLED: "true"
+      APICURIO_REST_DELETION_ARTIFACT-VERSION_ENABLED: "true"
+      JAVA_OPTS_APPEND: -Xmx384m
+    ports:
+      - "127.0.0.1:${PORT_REGISTRY}:8080"
+
+  registry-ui:
+    image: apicurio/apicurio-registry-ui:3.3.5
+    container_name: mf-rt-registry-ui
+    profiles: ["schema"]
+    depends_on:
+      - registry
+    environment:
+      REGISTRY_API_URL: http://127.0.0.1:${PORT_REGISTRY}/apis/registry/v3
+    ports:
+      - "127.0.0.1:${PORT_REGISTRY_UI}:8080"
+
+  # --- profile "flink": a Flink 2.2 session cluster (one JobManager, one TaskManager) used for
+  # the engine comparison and the exactly-once kill test. Checkpoints go to a local volume.
+  flink-jobmanager:
+    build: ./flink
+    image: mf-realtime/flink:2.2.1
+    container_name: mf-rt-flink-jm
+    hostname: flink-jobmanager
+    profiles: ["flink"]
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: &flink-props |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 6
+        parallelism.default: 6
+        jobmanager.memory.process.size: 1024m
+        taskmanager.memory.process.size: 2048m
+        execution.checkpointing.dir: file:///checkpoints/flink
+        state.savepoints.dir: file:///checkpoints/flink-savepoints
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 20
+        restart-strategy.fixed-delay.delay: 2 s
+    volumes:
+      - ..:/lab
+      - checkpoints:/checkpoints
+    ports:
+      - "127.0.0.1:${PORT_FLINK_UI}:8081"
+
+  flink-taskmanager:
+    image: mf-realtime/flink:2.2.1
+    container_name: mf-rt-flink-tm
+    hostname: flink-taskmanager
+    profiles: ["flink"]
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: *flink-props
+    volumes:
+      - checkpoints:/checkpoints
+
 volumes:
   kafka-data:
   s3-data:

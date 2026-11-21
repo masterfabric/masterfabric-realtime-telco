@@ -1,0 +1,89 @@
+{
+  "registry": "Apicurio Registry 3.3.5, Confluent-compatible API /apis/ccompat/v7, kafkasql storage",
+  "subject": "cell.kpi.avro-value",
+  "measured_at": "2026-11-21T06:47:51+00:00",
+  "steps": [
+    {
+      "step": "register v1",
+      "http_status": 200,
+      "ms": 113.2,
+      "response": {
+        "id": 1
+      }
+    },
+    {
+      "step": "set subject compatibility BACKWARD",
+      "http_status": 200,
+      "ms": 39.0,
+      "response": {
+        "compatibility": "BACKWARD",
+        "normalize": false
+      }
+    },
+    {
+      "step": "check v2 (optional field + default)",
+      "http_status": 200,
+      "ms": 19.7,
+      "response": {
+        "is_compatible": true
+      }
+    },
+    {
+      "step": "register v2",
+      "http_status": 200,
+      "ms": 53.5,
+      "response": {
+        "id": 2
+      }
+    },
+    {
+      "step": "check v3 (required field, no default)",
+      "http_status": 200,
+      "ms": 7.4,
+      "response": {
+        "is_compatible": false
+      }
+    },
+    {
+      "step": "register v3",
+      "http_status": 409,
+      "ms": 9.4,
+      "response": {
+        "message": "io.apicurio.registry.rules.violation.RuleViolationException: Incompatible artifact: cell.kpi.avro-value [AVRO], num of incompatible diffs: {1}, list of diff types: [vendor at /fields/18]",
+        "error_code": 409
+      }
+    },
+    {
+      "step": "re-register v1 (idempotent)",
+      "http_status": 200,
+      "ms": 3.7,
+      "response": {
+        "id": 1
+      }
+    },
+    {
+      "step": "list versions",
+      "http_status": 200,
+      "ms": 7.0,
+      "response": [
+        1,
+        2
+      ]
+    }
+  ],
+  "ids": {
+    "v1": 1,
+    "v2": 2
+  },
+  "v3_rejected": true,
+  "sample_record_bytes": {
+    "json": 367,
+    "avro_wire": 101,
+    "avro_header": 5
+  },
+  "round_trip_equal": true,
+  "v1_read_with_v2_reader": {
+    "energy_kwh": null,
+    "cell_id": "C0001"
+  }
+}

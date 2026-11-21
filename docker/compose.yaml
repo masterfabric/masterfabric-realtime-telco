@@ -57,6 +57,8 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: mf-realtime
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      # Decodes cell.kpi.avro in the message browser when the "schema" profile is up.
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://registry:8080/apis/ccompat/v7
       DYNAMIC_CONFIG_ENABLED: "false"
     ports:
       - "127.0.0.1:${PORT_KAFKA_UI}:8080"
@@ -148,7 +150,7 @@ services:
       APICURIO_KAFKASQL_BOOTSTRAP_SERVERS: kafka:9092
       APICURIO_KAFKASQL_TOPIC: _registry_journal
       APICURIO_KAFKASQL_SNAPSHOTS_TOPIC: _registry_snapshots
-      APICURIO_HTTP_CORS_ORIGINS: http://127.0.0.1:${PORT_REGISTRY_UI},http://localhost:${PORT_REGISTRY_UI}
+      QUARKUS_HTTP_CORS_ORIGINS: http://127.0.0.1:${PORT_REGISTRY_UI},http://localhost:${PORT_REGISTRY_UI}
       APICURIO_REST_DELETION_ARTIFACT_ENABLED: "true"
       APICURIO_REST_DELETION_ARTIFACT-VERSION_ENABLED: "true"
       JAVA_OPTS_APPEND: -Xmx384m

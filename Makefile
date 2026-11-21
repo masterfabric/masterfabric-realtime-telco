@@ -1,10 +1,12 @@
 # MasterFabric Realtime Telco. Run `make help` for the list of targets.
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env -f docker/compose.yaml
+COMPOSE_ALL := $(COMPOSE) --profile schema --profile flink
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics produce test-unit offline live evaluate maintain bench screenshots assets tools
+.PHONY: help env up down ps logs topics produce test-unit offline live evaluate maintain bench screenshots assets tools \
+        schema-up flink-up registry-demo compare-drain compare-live eo-flink eo-spark engine-shots engine-assets
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -17,8 +19,8 @@ up: env ## Start Kafka, Kafka UI, object storage, the Iceberg catalog and Spark
 	$(COMPOSE) up -d --build
 	@echo "Kafka UI http://127.0.0.1:28080  S3 console http://127.0.0.1:29001  Spark UI http://127.0.0.1:24040  history http://127.0.0.1:28090"
 
-down: ## Stop the stack (keeps volumes)
-	$(COMPOSE) down
+down: ## Stop the stack incl. registry and Flink profiles (keeps volumes)
+	$(COMPOSE_ALL) down
 
 ps: ## Show service status
 	$(COMPOSE) ps -a
@@ -68,3 +70,34 @@ assets: ## Diagrams, charts and the hero image from docs/results
 
 tools: ## Host tools for screenshots and charts (uv venv)
 	uv venv -q -p 3.12 .venv && uv pip install -q -p .venv/bin/python -r requirements-tools.txt && .venv/bin/python -m playwright install chromium
+
+# --- Schema registry, Flink vs Spark, exactly-once tests ------------------------------------------
+
+schema-up: env ## Base stack + Apicurio registry (28085) and its UI (28086)
+	$(COMPOSE) --profile schema up -d --build
+	$(SPARK) python scripts/topic_tools.py recreate kpi_1m.flink_eo:3 >/dev/null || true
+
+flink-up: schema-up ## + Flink 2.2 session cluster (UI 28081)
+	$(SPARK) bash -c 'mkdir -p /checkpoints/flink /checkpoints/flink-savepoints && chmod 777 /checkpoints/flink /checkpoints/flink-savepoints'
+	$(COMPOSE_ALL) up -d --build flink-jobmanager flink-taskmanager
+
+registry-demo: ## Register v1, BACKWARD rule, v2 accepted, v3 rejected -> docs/results/schema_registry.json
+	$(SPARK) python scripts/registry_demo.py
+
+compare-drain: ## Throughput: Spark availableNow vs Flink bounded on 1.04M Avro records, 3 runs each
+	python3 scripts/engine_compare.py drain
+
+compare-live: ## Latency: both engines on a live feed at 60x (about 4 minutes)
+	python3 scripts/engine_compare.py live
+
+eo-flink: ## Kill the TaskManager twice: exactly-once vs at-least-once Kafka sink
+	python3 scripts/engine_compare.py eo-flink
+
+eo-spark: ## Kill the Spark driver 3 times: Iceberg sink and Kafka sink
+	python3 scripts/engine_compare.py eo-spark --max-offsets 10000
+
+engine-shots: ## Flink, Apicurio and Kafka UI screenshots (kills the TaskManager once)
+	$(PY) scripts/screenshots_engines.py
+
+engine-assets: ## Diagram and charts for this addition
+	cd scripts && ../$(PY) make_engine_assets.py

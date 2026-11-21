@@ -1,0 +1,157 @@
+{
+  "input": {
+    "records": 1042006,
+    "cells": 240,
+    "sim_hours": 12,
+    "v2_from_minute": 360,
+    "late": 31301,
+    "very_late": 1031,
+    "duplicates": 5206,
+    "windows_truth": 172800
+  },
+  "setup": {
+    "spark": "local[6], driver 3g, availableNow, maxOffsetsPerTrigger 200000, 6 shuffle partitions, HDFS state store",
+    "flink": "session cluster, 1 TaskManager (3 GB), parallelism 6, bounded latest-offset, checkpoint 10 s"
+  },
+  "runs": [
+    {
+      "engine": "spark",
+      "run": 1,
+      "processing_s": 10.54,
+      "with_startup_s": 12.33,
+      "batches": 7,
+      "stats": {
+        "mf-rt-spark": {
+          "samples": 7,
+          "cpu_avg_pct": 293.3,
+          "cpu_max_pct": 501.8,
+          "mem_max_mib": 2195.5
+        }
+      }
+    },
+    {
+      "engine": "flink",
+      "run": 1,
+      "processing_s": 5.38,
+      "with_startup_s": 11.41,
+      "state": "FINISHED",
+      "stats": {
+        "mf-rt-flink-jm": {
+          "samples": 6,
+          "cpu_avg_pct": 88.9,
+          "cpu_max_pct": 330.6,
+          "mem_max_mib": 696.6
+        },
+        "mf-rt-flink-tm": {
+          "samples": 6,
+          "cpu_avg_pct": 189.3,
+          "cpu_max_pct": 562.4,
+          "mem_max_mib": 1769.5
+        }
+      }
+    },
+    {
+      "engine": "spark",
+      "run": 2,
+      "processing_s": 10.8,
+      "with_startup_s": 12.63,
+      "batches": 7,
+      "stats": {
+        "mf-rt-spark": {
+          "samples": 7,
+          "cpu_avg_pct": 302.6,
+          "cpu_max_pct": 481.5,
+          "mem_max_mib": 2305.0
+        }
+      }
+    },
+    {
+      "engine": "flink",
+      "run": 2,
+      "processing_s": 3.07,
+      "with_startup_s": 7.79,
+      "state": "FINISHED",
+      "stats": {
+        "mf-rt-flink-jm": {
+          "samples": 4,
+          "cpu_avg_pct": 121.4,
+          "cpu_max_pct": 324.4,
+          "mem_max_mib": 976.9
+        },
+        "mf-rt-flink-tm": {
+          "samples": 4,
+          "cpu_avg_pct": 148.9,
+          "cpu_max_pct": 549.8,
+          "mem_max_mib": 1872.9
+        }
+      }
+    },
+    {
+      "engine": "spark",
+      "run": 3,
+      "processing_s": 9.5,
+      "with_startup_s": 11.3,
+      "batches": 7,
+      "stats": {
+        "mf-rt-spark": {
+          "samples": 6,
+          "cpu_avg_pct": 317.0,
+          "cpu_max_pct": 478.7,
+          "mem_max_mib": 2270.2
+        }
+      }
+    },
+    {
+      "engine": "flink",
+      "run": 3,
+      "processing_s": 2.82,
+      "with_startup_s": 7.67,
+      "state": "FINISHED",
+      "stats": {
+        "mf-rt-flink-jm": {
+          "samples": 4,
+          "cpu_avg_pct": 95.6,
+          "cpu_max_pct": 237.4,
+          "mem_max_mib": 1021.0
+        },
+        "mf-rt-flink-tm": {
+          "samples": 4,
+          "cpu_avg_pct": 146.0,
+          "cpu_max_pct": 506.6,
+          "mem_max_mib": 1928.2
+        }
+      }
+    }
+  ],
+  "summary": {
+    "spark": {
+      "processing_s_median": 10.54,
+      "records_per_s": 98862,
+      "with_startup_s_median": 12.33
+    },
+    "flink": {
+      "processing_s_median": 3.07,
+      "records_per_s": 339416,
+      "with_startup_s_median": 7.79
+    }
+  },
+  "spark_vs_flink": {
+    "common_windows": 172080,
+    "identical": 172080,
+    "differ": 0,
+    "only_first": 0,
+    "only_second": 720
+  },
+  "spark_vs_truth": {
+    "windows": 172080,
+    "complete_windows": 172080,
+    "reports_missing_late": 0,
+    "truth_windows": 172800
+  },
+  "flink_vs_truth": {
+    "windows": 172800,
+    "complete_windows": 172800,
+    "reports_missing_late": 0,
+    "truth_windows": 172800
+  }
+}

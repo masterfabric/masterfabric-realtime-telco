@@ -1,0 +1,54 @@
+{
+  "setup": {
+    "checkpoint": "10 s",
+    "kills_at_s": [
+      40,
+      80
+    ],
+    "taskmanager_down_s": 3,
+    "speed": 60,
+    "sim_hours": 4
+  },
+  "kills": [
+    {
+      "at_s": 40,
+      "failure_detected_s": 15.7,
+      "all_tasks_running_s": 18.8
+    },
+    {
+      "at_s": 80,
+      "failure_detected_s": 15.7,
+      "all_tasks_running_s": 18.9
+    }
+  ],
+  "job_failures_recorded": {
+    "exactly_once": 2,
+    "at_least_once": 2
+  },
+  "topics": {
+    "eo.flink.exactly_once": {
+      "read_committed": {
+        "rows": 56880,
+        "distinct_windows": 56880,
+        "duplicate_rows": 0
+      },
+      "read_uncommitted": {
+        "rows": 58320,
+        "distinct_windows": 56880,
+        "duplicate_rows": 1440
+      }
+    },
+    "eo.flink.at_least_once": {
+      "read_committed": {
+        "rows": 60960,
+        "distinct_windows": 56880,
+        "duplicate_rows": 4080
+      },
+      "read_uncommitted": {
+        "rows": 60960,
+        "distinct_windows": 56880,
+        "duplicate_rows": 4080
+      }
+    }
+  }
+}

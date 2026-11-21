@@ -268,16 +268,24 @@ def analyze_live() -> None:
 
 
 # -------------------------------------------------------------------------------------------- eo-flink
-def wait_recovered(jids: list[str], t_kill: float, timeout: float = 180) -> float | None:
-    time.sleep(1)
+def failures(jid: str) -> int:
+    return len(rest(f"/jobs/{jid}/exceptions").get("exceptionHistory", {}).get("entries", []))
+
+
+def wait_recovered(jids: list[str], before: dict[str, int], t_kill: float, timeout: float = 240) -> dict:
+    """Detection = the job records a new failure (the JobManager notices the lost TaskManager);
+    recovery = every vertex of every job is RUNNING again after that."""
+    detected = None
     while time.time() - t_kill < timeout:
         try:
-            if all(flink_running(j) for j in jids):
-                return round(time.time() - t_kill, 1)
+            if detected is None and all(failures(j) > before[j] for j in jids):
+                detected = round(time.time() - t_kill, 1)
+            if detected is not None and all(flink_running(j) for j in jids):
+                return {"failure_detected_s": detected, "all_tasks_running_s": round(time.time() - t_kill, 1)}
         except Exception:                                   # noqa: BLE001  REST briefly unavailable
             pass
-        time.sleep(0.5)
-    return None
+        time.sleep(0.25)
+    return {"failure_detected_s": detected, "all_tasks_running_s": None}
 
 
 def stage_eo_flink(a: argparse.Namespace) -> None:
@@ -293,18 +301,18 @@ def stage_eo_flink(a: argparse.Namespace) -> None:
     kills = []
     for at in a.kill_at:
         time.sleep(max(0.0, t_start + at - time.time()))
+        before = {j: failures(j) for j in jids}
         t_kill = time.time()
         sh(["docker", "kill", "-s", "KILL", "mf-rt-flink-tm"])
         time.sleep(a.down_s)
         sh(["docker", "start", "mf-rt-flink-tm"])
-        kills.append({"at_s": at, "recovered_after_s": wait_recovered(jids, t_kill)})
+        kills.append({"at_s": at, **wait_recovered(jids, before, t_kill)})
         print(json.dumps(kills[-1]))
     prod_t.join()
     time.sleep(45)                                          # last windows close via the idle-source watermark
     restarts = {}
     for name, j in (("exactly_once", eo["job_id"]), ("at_least_once", alo["job_id"])):
-        ex = rest(f"/jobs/{j}/exceptions")
-        restarts[name] = len(ex.get("exceptionHistory", {}).get("entries", []))
+        restarts[name] = failures(j)
         flink_cancel(j)
     time.sleep(5)
     res = {"setup": {"checkpoint": a.checkpoint, "kills_at_s": a.kill_at, "taskmanager_down_s": a.down_s,

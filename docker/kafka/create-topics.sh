@@ -9,7 +9,7 @@ $K --bootstrap-server $B --create --if-not-exists --topic cell.alerts --partitio
 # Avro copy of the KPI stream (Confluent wire format, schema ids from the registry).
 $K --bootstrap-server $B --create --if-not-exists --topic cell.kpi.avro --partitions 6 --replication-factor 1 --config retention.ms=86400000
 # Engine comparison sinks: the same 1-minute per-cell aggregation from Spark and from Flink.
-for t in kpi_1m.spark kpi_1m.flink eo.flink.exactly_once eo.flink.at_least_once eo.spark.kafka; do
+for t in kpi_1m.spark kpi_1m.flink kpi_1m.flink_eo eo.flink.exactly_once eo.flink.at_least_once eo.spark.kafka; do
   $K --bootstrap-server $B --create --if-not-exists --topic $t --partitions 3 --replication-factor 1 --config retention.ms=86400000
 done
 $K --bootstrap-server $B --list

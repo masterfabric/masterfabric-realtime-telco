@@ -75,7 +75,6 @@ tools: ## Host tools for screenshots and charts (uv venv)
 
 schema-up: env ## Base stack + Apicurio registry (28085) and its UI (28086)
 	$(COMPOSE) --profile schema up -d --build
-	$(SPARK) python scripts/topic_tools.py recreate kpi_1m.flink_eo:3 >/dev/null || true
 
 flink-up: schema-up ## + Flink 2.2 session cluster (UI 28081)
 	$(SPARK) bash -c 'mkdir -p /checkpoints/flink /checkpoints/flink-savepoints && chmod 777 /checkpoints/flink /checkpoints/flink-savepoints'

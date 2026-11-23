@@ -66,9 +66,10 @@ def bronze_query(src: DataFrame, a: argparse.Namespace):
                .toTable(f"lake.{a.ns}.kpi_events"))
 
 
-def silver_query(src: DataFrame, a: argparse.Namespace):
-    agg = (src.filter("parse_ok")
-              .withWatermark("event_ts", f"{a.watermark_min} minutes")
+def silver_frame(src: DataFrame, watermark: str) -> DataFrame:
+    """The silver transformation on its own, so tests and the watermark sweep run exactly this code."""
+    return (src.filter("parse_ok")
+              .withWatermark("event_ts", watermark)
               .dropDuplicatesWithinWatermark(["event_id"])
               .groupBy(F.window("event_ts", "1 minute"), "cell_id", "site_id", "city", "rat")
               .agg(F.count("*").alias("reports"),
@@ -88,6 +89,10 @@ def silver_query(src: DataFrame, a: argparse.Namespace):
                       "throughput_avg_mbps", "sinr_avg", "latency_avg", "rrc_attempts", "rrc_success",
                       "erab_drops", "availability_min", "last_kafka_ts")
               .withColumn("emitted_at", F.current_timestamp()))
+
+
+def silver_query(src: DataFrame, a: argparse.Namespace):
+    agg = silver_frame(src, f"{a.watermark_min} minutes")
     return (agg.writeStream.queryName("silver").format("iceberg").outputMode("append")
                .trigger(**trigger(a, a.trigger_silver))
                .option("checkpointLocation", f"{a.checkpoints}/silver")

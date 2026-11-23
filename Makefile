@@ -5,7 +5,7 @@ COMPOSE_ALL := $(COMPOSE) --profile schema --profile flink
 SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
-.PHONY: help env up down ps logs topics produce test-unit offline live evaluate maintain bench screenshots assets tools \
+.PHONY: help env up down ps logs topics produce test-unit test-spark offline live evaluate maintain bench screenshots assets tools \
         schema-up flink-up registry-demo compare-drain compare-live eo-flink eo-spark engine-shots engine-assets
 
 help: ## Show targets
@@ -41,6 +41,9 @@ produce: ## Stream synthetic KPI reports into Kafka (CELLS=240 HOURS=6 SPEED=120
 
 test-unit: ## Producer and detector unit tests (inside the Spark container)
 	$(SPARK) python -m pytest -q -p no:cacheprovider tests/unit
+
+test-spark: ## Late, out-of-order and duplicate reports through the real silver code (local Spark)
+	$(SPARK) python -m pytest -q -p no:cacheprovider tests/spark
 
 SEED ?= 7
 

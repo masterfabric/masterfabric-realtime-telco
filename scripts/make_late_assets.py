@@ -76,8 +76,7 @@ def backpressure() -> None:
     for i, r in enumerate(runs):
         ax[1].text(i + 0.2, r["latency_s"]["max"], f"{r['latency_s']['max']:.0f} s", ha="center", va="bottom", fontsize=9)
     ax[1].set_xticks(list(x), names)
-    ax[1].set_yscale("log")
-    ax[1].set_ylabel("seconds (log scale)")
+    ax[1].set_ylabel("seconds")
     ax[1].set_title("Latency p50 (solid) and max (light) per input rate")
     fig.suptitle("Backpressure: Spark reads at most maxOffsetsPerTrigger, the rest waits in Kafka",
                  x=0.01, ha="left", fontsize=13)

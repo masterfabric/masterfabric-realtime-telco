@@ -1,7 +1,7 @@
 # 0003. Event time, a 2-minute watermark and dedupe within the watermark
 
 - Status: Accepted
-- Date: 2026-11-21
+- Date: 2026-11-21 (evidence added 2026-11-23)
 
 ## Context
 
@@ -30,6 +30,32 @@ keeping every window open forever would grow state without bound.
   time is `trigger seconds x speed`; at the 120x smoke-test speed a 5-second trigger spans
   10 simulated minutes, so even the "very late" reports landed in time. The live run therefore uses
   30x and a 2-second silver trigger (1 simulated minute).
+
+## Evidence (2026-11-23)
+
+`make watermark-sweep` replays one recorded delivery (seed 2026, 240 cells, 2 simulated hours,
+173,701 reports, cut into 30-second arrival batches) through the silver code once per watermark
+delay (`docs/results/watermark_sweep.json`):
+
+| Watermark | Reports lost | Windows incomplete | Window end → emitted |
+|---|---:|---:|---:|
+| 10 s | 2,999 | 9.95 % | 0.5 min |
+| 30 s | 1,087 | 3.70 % | 1.0 min |
+| 1 min | 190 | 0.66 % | 1.5 min |
+| **2 min (chosen)** | **188** | **0.65 %** | **2.5 min** |
+| 5 min | 178 | 0.62 % | 5.5 min |
+| 11 min | 0 | 0 % | 11.5 min |
+
+Ordinary lateness (5 to 60 s) is fully absorbed from 1 minute on; everything lost at 1 to 5 minutes
+is the very late tail (300 to 600 s), which only an 11-minute watermark keeps, at 4.6 times the
+delay. 2 minutes keeps one minute of margin over the observed lateness for one extra minute of
+delay. `make test-spark` pins the semantics: out-of-order reports land in their window, a report
+behind the watermark is dropped and never reopens an emitted window, a re-send is counted once, and
+the watermark is global, so a cell whose clock runs 3 minutes behind loses all its reports.
+
+That last point is a real operational risk: one watermark per query means a source with a skewed
+clock is silently discarded. Clock skew per cell should be monitored in bronze (event time against
+Kafka time), not discovered as missing silver rows.
 
 ## Enterprise mapping
 

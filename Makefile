@@ -6,7 +6,8 @@ SPARK   := docker exec -w /lab mf-rt-spark
 PY      ?= .venv/bin/python
 
 .PHONY: help env up down ps logs topics produce test-unit test-spark offline live evaluate maintain bench screenshots assets tools \
-        schema-up flink-up registry-demo compare-drain compare-live eo-flink eo-spark engine-shots engine-assets
+        schema-up flink-up registry-demo compare-drain compare-live eo-flink eo-spark engine-shots engine-assets \
+        watermark-sweep backpressure late-assets
 
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -103,3 +104,13 @@ engine-shots: ## Flink, Apicurio and Kafka UI screenshots (kills the TaskManager
 
 engine-assets: ## Diagram and charts for this addition
 	cd scripts && ../$(PY) make_engine_assets.py
+
+watermark-sweep: ## Replay one recorded delivery through silver with 6 watermark delays (about 8 minutes)
+	$(SPARK) bash -c 'python -m producer.run --sink file --speed 0 --seed 2026 --hours 2 --warmup-min 30 --arrivals --run-id wm-seed2026 >/dev/null && \
+	  python -m streaming.watermark_sweep --run /data/runs/wm-seed2026 --out docs/results/watermark_sweep.json'
+
+backpressure: ## Silver alone with a 1,000 rec/s read cap, fed at 0.5x to 2x of it (about 12 minutes)
+	scripts/backpressure.sh
+
+late-assets: ## Charts for the watermark sweep and the backpressure runs
+	cd scripts && ../$(PY) make_late_assets.py

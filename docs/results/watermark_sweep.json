@@ -1,0 +1,152 @@
+{
+ "run_id": "wm-seed2026",
+ "cells": 240,
+ "sim_minutes": 120,
+ "seed": 2026,
+ "delivery": {
+  "reports": 172800,
+  "sent": 173701,
+  "late": 5159,
+  "very_late": 192,
+  "duplicates": 901
+ },
+ "rates": {
+  "late": 0.03,
+  "very_late": 0.001,
+  "duplicate": 0.005
+ },
+ "events_delivered": 173701,
+ "batch_s": 30,
+ "arrival_lag_s": {
+  "p50": 1.0330000000000155,
+  "p99": 43.4670000000001,
+  "p999": 342.1238000000205,
+  "max": 598.893,
+  "histogram": {
+   "<2 s": 167416,
+   "2-10 s": 854,
+   "10-30 s": 2425,
+   "30-60 s": 2807,
+   "60-120 s": 7,
+   "120-300 s": 0,
+   "300-600 s": 192,
+   ">600 s": 0
+  }
+ },
+ "results": [
+  {
+   "watermark": "10 seconds",
+   "windows_expected": 28800,
+   "windows_emitted": 28800,
+   "windows_complete": 25935,
+   "windows_missing": 0,
+   "reports_distinct": 172800,
+   "reports_counted": 169801,
+   "reports_lost": 2999,
+   "dropped_by_watermark_rows": 3042,
+   "emitted_by_flush": 240,
+   "emit_delay_s": {
+    "p50": 30.0,
+    "p95": 30.0,
+    "max": 30.0
+   },
+   "spark_batches": 491,
+   "replay_seconds": 83.1
+  },
+  {
+   "watermark": "30 seconds",
+   "windows_expected": 28800,
+   "windows_emitted": 28800,
+   "windows_complete": 27734,
+   "windows_missing": 0,
+   "reports_distinct": 172800,
+   "reports_counted": 171713,
+   "reports_lost": 1087,
+   "dropped_by_watermark_rows": 1101,
+   "emitted_by_flush": 240,
+   "emit_delay_s": {
+    "p50": 60.0,
+    "p95": 60.0,
+    "max": 60.0
+   },
+   "spark_batches": 491,
+   "replay_seconds": 74.2
+  },
+  {
+   "watermark": "1 minute",
+   "windows_expected": 28800,
+   "windows_emitted": 28800,
+   "windows_complete": 28610,
+   "windows_missing": 0,
+   "reports_distinct": 172800,
+   "reports_counted": 172610,
+   "reports_lost": 190,
+   "dropped_by_watermark_rows": 190,
+   "emitted_by_flush": 480,
+   "emit_delay_s": {
+    "p50": 90.0,
+    "p95": 90.0,
+    "max": 90.0
+   },
+   "spark_batches": 491,
+   "replay_seconds": 75.6
+  },
+  {
+   "watermark": "2 minutes",
+   "windows_expected": 28800,
+   "windows_emitted": 28800,
+   "windows_complete": 28612,
+   "windows_missing": 0,
+   "reports_distinct": 172800,
+   "reports_counted": 172612,
+   "reports_lost": 188,
+   "dropped_by_watermark_rows": 188,
+   "emitted_by_flush": 720,
+   "emit_delay_s": {
+    "p50": 150.0,
+    "p95": 150.0,
+    "max": 150.0
+   },
+   "spark_batches": 491,
+   "replay_seconds": 70.5
+  },
+  {
+   "watermark": "5 minutes",
+   "windows_expected": 28800,
+   "windows_emitted": 28800,
+   "windows_complete": 28622,
+   "windows_missing": 0,
+   "reports_distinct": 172800,
+   "reports_counted": 172622,
+   "reports_lost": 178,
+   "dropped_by_watermark_rows": 178,
+   "emitted_by_flush": 1440,
+   "emit_delay_s": {
+    "p50": 330.0,
+    "p95": 330.0,
+    "max": 330.0
+   },
+   "spark_batches": 491,
+   "replay_seconds": 70.6
+  },
+  {
+   "watermark": "11 minutes",
+   "windows_expected": 28800,
+   "windows_emitted": 28800,
+   "windows_complete": 28800,
+   "windows_missing": 0,
+   "reports_distinct": 172800,
+   "reports_counted": 172800,
+   "reports_lost": 0,
+   "dropped_by_watermark_rows": 0,
+   "emitted_by_flush": 2880,
+   "emit_delay_s": {
+    "p50": 690.0,
+    "p95": 690.0,
+    "max": 690.0
+   },
+   "spark_batches": 491,
+   "replay_seconds": 75.7
+  }
+ ]
+}

@@ -30,7 +30,7 @@ All numbers below come from runs on an Apple M4 Pro (24 GB) with Docker through 
 ## Contents
 
 [Why](#why-this-lab) · [Architecture](#architecture) · [The detector](#the-detector) ·
-[Results](#results) · [Avro, Flink vs Spark, exactly-once](#schema-registry-flink-vs-spark-and-exactly-once) · [Screenshots](#what-it-looks-like) · [Quickstart](#quickstart) ·
+[Results](#results) · [Avro, Flink vs Spark, exactly-once](#schema-registry-flink-vs-spark-and-exactly-once) · [Late data and backpressure](#late-data-watermarks-and-backpressure) · [Screenshots](#what-it-looks-like) · [Quickstart](#quickstart) ·
 [Walkthrough](#walkthrough) · [Enterprise mapping](#enterprise-mapping) · [Decisions](#design-decisions) ·
 [Limitations](#limitations) · [Roadmap](#roadmap) · [Build timeline](docs/TIMELINE.md) · [License](#license)
 
@@ -326,6 +326,90 @@ after launch.
 <p align="center"><img src="docs/screenshots/flink_exceptions_after_kill.png" alt="Flink exceptions tab: TaskManager no longer reachable" width="49%"> <img src="docs/screenshots/flink_checkpoints.png" alt="Flink checkpoint history with one failed checkpoint during the kill" width="49%"></p>
 <p align="center"><sub><b>Figure 20.</b> The same recovery in the Flink UI: "TaskManager … is no longer reachable", and checkpoint 5 failed during the outage while the following ones complete again.</sub></p>
 
+## Late data, watermarks and backpressure
+
+Two questions the live run cannot answer cleanly: what exactly happens to a report that arrives
+late, and what happens to latency when input outruns the job.
+
+### Late and out-of-order reports, one micro-batch at a time
+
+`streaming/replay.py` drives the real silver code (`silver_frame`, the function the live job runs)
+from files instead of Kafka: one file is one micro-batch, so the test decides which report arrives
+after which. `make test-spark` runs seven cases ([`tests/spark/test_watermark.py`](tests/spark/test_watermark.py)):
+
+| Case | What arrives | Silver |
+|---|---|---|
+| Out of order | 05:00:50, 05:00:10, 05:00:30 in one batch | one window, 3 reports, correct average and max |
+| Not yet final | window 05:00, then the stream reaches 05:02:59 | nothing emitted until the watermark reaches 05:01:00 |
+| Late, inside the watermark | 05:00:40 after the stream reached 05:01:30 | counted (2 reports), 0 dropped |
+| Late, behind the watermark | 05:00:50 after the window was emitted | dropped, counted in `numRowsDroppedByWatermark`; the window is never re-emitted |
+| Retry, same `event_id` | the same report in two batches | counted once |
+| Retry after the window closed | the same report after emission | the emitted window stays at 1 report |
+| Lagging clock | one cell 3 minutes behind the others | every report of that cell after the first batch is dropped |
+
+The last row is the one to remember: there is **one watermark per query, not per cell**, so a single
+source with a skewed clock is silently discarded while everything else looks healthy.
+
+### How long to wait: a watermark sweep
+
+`make watermark-sweep` records one delivery with the producer (seed 2026, 240 cells, 2 simulated
+hours, 173,701 deliveries of 172,800 reports, 901 of them re-sends) together with each report's simulated arrival time,
+cuts it into 30-second arrival batches and replays it through silver once per watermark delay
+([`watermark_sweep.json`](docs/results/watermark_sweep.json)).
+
+<p align="center"><img src="docs/images/watermark_tradeoff.png" alt="Arrival lag histogram, reports lost and emit delay per watermark delay" width="100%"></p>
+<p align="center"><sub><b>Figure 21.</b> Left: how late reports arrive (96.4 % within 2 s, 3.5 % at 2 to 60 s, 192 at 5 to 10 minutes). Middle: distinct reports missing from emitted windows, and the share of the 28,800 windows that are incomplete. Right: simulated time from a window's end to the batch that emitted it; at 1x speed these are real minutes.</sub></p>
+
+| Watermark | Reports lost | Windows incomplete | Window end → emitted |
+|---|---:|---:|---:|
+| 10 s | 2,999 | 9.95 % | 0.5 min |
+| 30 s | 1,087 | 3.70 % | 1.0 min |
+| 1 min | 190 | 0.66 % | 1.5 min |
+| **2 min (the live setting)** | **188** | **0.65 %** | **2.5 min** |
+| 5 min | 178 | 0.62 % | 5.5 min |
+| 11 min | 0 | 0 % | 11.5 min |
+
+From 1 minute on, all ordinary lateness is absorbed; what is still lost is the 5-to-10-minute tail,
+which only an 11-minute watermark keeps, at 4.6 times the delay of the 2-minute setting. The emit
+delay is the watermark plus one 30-second batch, because Spark applies a new watermark in the batch
+after the one that moved it. All 28,800 windows were emitted at every setting: a lost report makes a
+window incomplete, it does not remove it. [ADR 0003](docs/adr/0003-event-time-watermarks.md) has the
+reasoning for keeping 2 minutes.
+
+### Backpressure: what happens when input outruns the job
+
+Structured Streaming has no automatic backpressure for Kafka. `maxOffsetsPerTrigger` caps what one
+micro-batch reads and everything else waits in Kafka, so when input is faster than the cap the
+backlog, and with it latency, grows for as long as the overload lasts. `make backpressure` runs the
+silver query alone with a cap of 2,000 records per 2-second trigger (1,000 records/s) and feeds
+one simulated hour (86,845 records) at 0.5x, 1x, 1.5x and 1.9x that rate, then 1.9x without a cap
+([`backpressure.json`](docs/results/backpressure.json)). Latency is from the Kafka timestamp of a
+window's last report to the silver row.
+
+<p align="center"><img src="docs/images/backpressure.png" alt="Silver latency over time and latency percentiles per input rate" width="100%"></p>
+<p align="center"><sub><b>Figure 22.</b> Left: median latency of each emitted batch of windows over the run. Below the cap latency is flat; above it, it climbs in a straight line until the producer stops and the backlog drains. Right: p50 and max per run.</sub></p>
+
+| Input | vs cap | Latency p50 | p95 | max | Last window emitted | Producer finished |
+|---|---:|---:|---:|---:|---:|---:|
+| 484 events/s | 0.5x | 8.6 s | 9.6 s | 10.1 s | 180.1 s | 179.5 s |
+| 968 events/s | 1.0x | 6.4 s | 7.2 s | 7.9 s | 90.9 s | 89.8 s |
+| 1,451 events/s | 1.5x | 18.4 s | 30.3 s | **31.6 s** | 87.3 s | 59.8 s |
+| 1,935 events/s | 1.9x | 25.4 s | 43.9 s | **45.3 s** | 87.1 s | 44.9 s |
+| 1,935 events/s | no cap | 4.6 s | 5.6 s | 5.7 s | 46.4 s | 44.9 s |
+
+- **Overload latency is arithmetic.** Latency grows by (input − cap) / cap seconds per second:
+  0.45 s/s at 1.5x and 0.94 s/s at 1.9x. Over the 60 s and 45 s of overload that predicts about 27 s
+  and 42 s on top of the 3 to 4 s floor, which is what was measured (31.6 s and 45.3 s).
+- **The cap sets the finish time, not the input.** Both overloaded runs emitted their last window at
+  87 s, 86,845 records at 1,000 per second, however fast they were produced.
+- **The slow run is not the fast one.** At 0.5x the floor is higher than at 1x (8.6 s against 6.4 s)
+  because the 2-minute watermark is 6 s of wall time at 20x and 3 s at 40x; the waiting is event
+  time, not load.
+- **The cap was the bottleneck, not Spark.** Without it the same 1,935 events/s ran at p50 4.6 s with
+  a median batch of 0.6 s. A cap protects a shared cluster from a replay or a catch-up; set it from
+  measured batch time, and alert on consumer lag, because latency itself only shows the problem
+  after the backlog exists.
+
 ## Quickstart
 
 Requirements: Docker with Compose (Docker Desktop, Colima or OrbStack) and about 8 GB of memory for the
@@ -393,7 +477,7 @@ tests/unit/  producer and detector tests
 ## Enterprise mapping
 
 <p align="center"><img src="docs/images/cloudera_mapping.png" alt="Mapping to Cloudera CDP" width="100%"></p>
-<p align="center"><sub><b>Figure 21.</b> Each lab component and its counterpart in a Cloudera CDP streaming estate.</sub></p>
+<p align="center"><sub><b>Figure 23.</b> Each lab component and its counterpart in a Cloudera CDP streaming estate.</sub></p>
 
 The patterns carry over unchanged: keyed topics, event-time windows with a watermark, dedupe within the
 watermark, independent queries per sink, an Iceberg table as the hand-off between streaming stages,
@@ -456,6 +540,14 @@ These are deliberate simplifications or measured weaknesses, listed so the numbe
   for up to about 10 seconds while it replayed its Kafka journal. Clients should wait for `/health/ready`.
 - **Exactly-once into Kafka needs `read_committed` readers** and makes output wait for the checkpoint
   (p50 7.7 s instead of 2.6 s with 10-second checkpoints).
+- **Late-data tests run on a file source, not Kafka.** The replay harness controls batch boundaries,
+  which Kafka triggers cannot; the transformation is the same function, but the sweep's emit delays
+  are simulated time quantised by its 30-second batches, and it covers one seed and one delivery
+  profile (3 % late, 0.1 % very late).
+- **Backpressure runs are short and single.** One run per rate, one simulated hour each, silver query
+  only, on a laptop with Kafka and Spark sharing 6 vCPUs. The no-cap run shows the job had headroom
+  at 1,935 events/s; the cap was set low on purpose to make overload visible. Consumer lag was not
+  sampled from Kafka directly; latency stands in for it.
 - **Object storage is RustFS, not MinIO.** The MinIO images could not be pulled from this machine
   (Docker Hub returned "access denied", quay.io 401). RustFS speaks the same S3 API.
 - **The tail of a run is not scored.** Windows in the last two simulated minutes never close once input

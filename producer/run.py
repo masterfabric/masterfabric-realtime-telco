@@ -38,17 +38,22 @@ LOCAL_UTC_OFFSET_H = 3
 class FileSink:
     """Used by tests and dry runs: writes newline-delimited JSON instead of producing to Kafka."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, arrivals: Path | None = None):
         self.f = open(path, "w")
+        self.a = open(arrivals, "w") if arrivals else None   # simulated arrival second, one per line
 
-    def send(self, key: str, value: bytes) -> None:
+    def send(self, key: str, value: bytes, at: float | None = None) -> None:
         self.f.write(value.decode() + "\n")
+        if self.a is not None:
+            self.a.write(f"{at:.3f}\n")
 
     def poll(self) -> None:
         pass
 
     def close(self) -> None:
         self.f.close()
+        if self.a is not None:
+            self.a.close()
 
 
 class KafkaSink:
@@ -71,7 +76,7 @@ class KafkaSink:
         if err is not None:
             self.errors += 1
 
-    def send(self, key: str, value: bytes) -> None:
+    def send(self, key: str, value: bytes, at: float | None = None) -> None:
         while True:
             try:
                 self.p.produce(self.topic, key=key.encode(), value=value, on_delivery=self._cb)
@@ -127,7 +132,8 @@ def run(args: argparse.Namespace) -> dict:
     out_dir = Path(args.out) / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    sink = FileSink(out_dir / "events.jsonl") if args.sink == "file" else KafkaSink(args.bootstrap, args.topic)
+    arrivals = out_dir / "arrivals.txt" if getattr(args, "arrivals", False) else None
+    sink = FileSink(out_dir / "events.jsonl", arrivals) if args.sink == "file" else KafkaSink(args.bootstrap, args.topic)
     encoders, schema_ids, sizes = setup_avro(args) if getattr(args, "format", "json") == "avro" else (None, {}, {})
     interval = args.interval_s
     ticks = total_min * 60 // interval
@@ -138,8 +144,8 @@ def run(args: argparse.Namespace) -> dict:
 
     def emit_due(now_sim_s: float) -> None:
         while pending and pending[0][0] <= now_sim_s:
-            _, _, key, payload = heapq.heappop(pending)
-            sink.send(key, payload)
+            at, _, key, payload = heapq.heappop(pending)
+            sink.send(key, payload, at)
             counters["sent"] += 1
 
     for tick in range(ticks):
@@ -223,6 +229,8 @@ def main() -> None:
     p.add_argument("--very-late-rate", type=float, default=0.001)
     p.add_argument("--duplicate-rate", type=float, default=0.005)
     p.add_argument("--sink", choices=["kafka", "file"], default="kafka")
+    p.add_argument("--arrivals", action="store_true",
+                   help="file sink only: also write arrivals.txt, the simulated arrival second of each line")
     p.add_argument("--bootstrap", default=os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092"))
     p.add_argument("--topic", default="cell.kpi")
     p.add_argument("--format", choices=["json", "avro"], default="json")

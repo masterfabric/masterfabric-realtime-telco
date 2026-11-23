@@ -67,3 +67,40 @@ Verification at the end of the addition:
 | Kill tests | Flink exactly-once 0 duplicates, at-least-once 4,080; Spark → Iceberg 521,044 / 521,044 offsets |
 | Mermaid blocks in the README | 3 render with mermaid-cli |
 | Machine state after the run | realtime containers stopped, Colima running, k3d cluster stopped |
+
+
+## Addition: late data, watermarks and backpressure (2026-11-23)
+
+| # | Commit | Time (Istanbul) | Change |
+|---|---|---|---|
+| 1 | [`90b5868`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/90b5868) | 2026-11-23 11:07 | streaming: silver transformation as a function (silver_frame), shared with tests |
+| 2 | [`9295fcb`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/9295fcb) | 2026-11-23 11:08 | streaming: replay harness that drives silver_frame one controlled micro-batch at a time |
+| 3 | [`c14eaad`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/c14eaad) | 2026-11-23 11:08 | test: watermark semantics of silver - out of order, late, too late, retries, lagging clock |
+| 4 | [`4c74e02`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/4c74e02) | 2026-11-23 11:09 | producer: --arrivals writes each line's simulated arrival time (file sink) |
+| 5 | [`217db93`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/217db93) | 2026-11-23 11:17 | results: watermark sweep over one recorded delivery (seed 2026, 2 h, 240 cells) |
+| 6 | [`de10ffc`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/de10ffc) | 2026-11-23 11:25 | charts: watermark trade-off (arrival lag, reports lost, emit delay) and backpressure plot |
+| 7 | [`bb64ad0`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/bb64ad0) | 2026-11-23 11:25 | make: watermark-sweep, backpressure and late-assets targets; ADR 0003 evidence from the sweep |
+| 8 | [`d598a26`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/d598a26) | 2026-11-23 11:33 | streaming: backpressure runs - silver alone with a 1,000 rec/s read cap at 0.5x to 2x input, plus no cap |
+| 9 | [`e2e0f86`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/e2e0f86) | 2026-11-23 11:33 | results: backpressure latency at 484, 968, 1,451 and 1,935 events/s |
+| 10 | [`152dcbd`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/152dcbd) | 2026-11-23 11:33 | docs: backpressure chart |
+| 11 | [`12b6c8c`](https://github.com/masterfabric/masterfabric-realtime-telco/commit/12b6c8c) | 2026-11-23 11:34 | README: late data, watermark sweep and backpressure with figures; limitations |
+| 12 | (this commit) | 2026-11-23 | TIMELINE for this addition |
+
+Verification at the end of the addition:
+
+| Check | Result |
+|---|---|
+| `make test-unit` + `make test-spark` in the Spark container | 25 + 7 = 32 passed |
+| `make watermark-sweep` | 6 delays on 173,701 deliveries; lost 2,999 / 1,087 / 190 / 188 / 178 / 0 reports; all 28,800 windows emitted every time |
+| `make backpressure` | p50 / max latency 8.6 / 10.1 s (0.5x), 6.4 / 7.9 s (1x), 18.4 / 31.6 s (1.5x), 25.4 / 45.3 s (1.9x), 4.6 / 5.7 s (1.9x, no cap) |
+| `make late-assets` | watermark_tradeoff.png, backpressure.png |
+| Machine state after the run | realtime containers stopped, scratch namespace `bp` and run files removed |
+
+Found while running it:
+
+- The 1-hour producer run failed (`low >= high`) with the default 60-minute warm-up: flash crowds need
+  `total - 50` minutes after warm-up. Short runs pass `--warmup-min 5` or `30`.
+- The backpressure report first failed on `Decimal` values from Spark SQL division; the latency columns
+  are cast to DOUBLE.
+- At 0.5x input the latency floor is higher than at 1x, because the watermark is event time: 2 simulated
+  minutes are 6 wall seconds at 20x and 3 at 40x.
